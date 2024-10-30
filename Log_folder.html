@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        h1 { color: #333; }
+        .container { max-width: 800px; margin: auto; padding: 20px; }
+        .error { color: red; }
+        pre { background: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Latest Folder Log Viewer</h1>
+        
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% else %}
+            <p><strong>Latest Folder:</strong> {{ latest_folder }}</p>
+            <p><strong>Log File:</strong> {{ log_file }}</p>
+            <h3>Last 10 Lines of Log:</h3>
+            <pre>{{ log_lines|join('\n') }}</pre>
+        {% endif %}
+    </div>
+</body>
+</html>
