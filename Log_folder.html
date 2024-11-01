@@ -6,16 +6,25 @@
     <title>Log Viewer</title>
     <style>
         body { font-family: Arial, sans-serif; }
-        h1 { color: #333; }
         .container { max-width: 800px; margin: auto; padding: 20px; }
         .error { color: red; }
-        .log-container {
-            background: #f4f4f4;
-            padding: 10px;
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
             border: 1px solid #ddd;
-            width: 50%;  /* Set width to 50% */
-            word-wrap: break-word;  /* Enable word wrapping */
-            overflow: auto;
+            padding: 10px;
+            vertical-align: top;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        td {
+            word-wrap: break-word;
+        }
+        .column1 {
+            width: 50%;
         }
     </style>
 </head>
@@ -26,12 +35,20 @@
         {% if error %}
             <p class="error">{{ error }}</p>
         {% else %}
-            <p><strong>Latest Folder:</strong> {{ latest_folder }}</p>
-            <p><strong>Log File:</strong> {{ log_file }}</p>
-            <h3>Last 10 Lines of Log:</h3>
-            <div class="log-container">
-                <pre>{{ log_lines|join('\n') }}</pre>
-            </div>
+            <table>
+                <tr>
+                    <td class="column1">
+                        <h3>Last 10 Lines of Log:</h3>
+                        <pre style="white-space: pre-wrap;">{{ log_lines|join('\n') }}</pre>
+                    </td>
+                    <td>
+                        <h3>Folder and Log Details:</h3>
+                        <p><strong>Latest Folder:</strong> {{ latest_folder }}</p>
+                        <p><strong>Log File:</strong> {{ log_file }}</p>
+                        <p><strong>Additional Information:</strong> <br> You can add more data here as needed.</p>
+                    </td>
+                </tr>
+            </table>
         {% endif %}
     </div>
 </body>
