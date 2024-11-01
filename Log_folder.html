@@ -9,7 +9,14 @@
         h1 { color: #333; }
         .container { max-width: 800px; margin: auto; padding: 20px; }
         .error { color: red; }
-        pre { background: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow: auto; }
+        .log-container {
+            background: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            width: 50%;  /* Set width to 50% */
+            word-wrap: break-word;  /* Enable word wrapping */
+            overflow: auto;
+        }
     </style>
 </head>
 <body>
@@ -22,7 +29,9 @@
             <p><strong>Latest Folder:</strong> {{ latest_folder }}</p>
             <p><strong>Log File:</strong> {{ log_file }}</p>
             <h3>Last 10 Lines of Log:</h3>
-            <pre>{{ log_lines|join('\n') }}</pre>
+            <div class="log-container">
+                <pre>{{ log_lines|join('\n') }}</pre>
+            </div>
         {% endif %}
     </div>
 </body>
