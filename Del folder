@@ -1,0 +1,32 @@
+# Define the path to the main folder
+$MainFolderPath = "C:\Path\To\Your\Folder"
+
+# Get the list of all directories
+$Directories = Get-ChildItem -Path $MainFolderPath -Directory
+
+# Total directories to process in one batch
+$BatchSize = 1000
+# Directories to delete in each chunk
+$ChunkSize = 100
+
+# Process directories in batches of 1000
+for ($BatchStart = 0; $BatchStart -lt $Directories.Count; $BatchStart += $BatchSize) {
+    # Get the next batch of 1000 directories
+    $CurrentBatch = $Directories[$BatchStart..([math]::Min($BatchStart + $BatchSize - 1, $Directories.Count - 1))]
+
+    # Process the batch in chunks of 100
+    for ($ChunkStart = 0; $ChunkStart -lt $CurrentBatch.Count; $ChunkStart += $ChunkSize) {
+        # Get the next chunk of 100 directories
+        $CurrentChunk = $CurrentBatch[$ChunkStart..([math]::Min($ChunkStart + $ChunkSize - 1, $CurrentBatch.Count - 1))]
+
+        # Delete the directories in the current chunk
+        foreach ($Dir in $CurrentChunk) {
+            Remove-Item -Path $Dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        }
+
+        # Display progress
+        Write-Host "Deleted $($ChunkStart + $ChunkSize) directories in the current batch..."
+    }
+
+    Write-Host "Completed deleting 1000 directories in this batch. Proceeding to the next batch..."
+}
