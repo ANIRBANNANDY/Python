@@ -1,0 +1,32 @@
+import psutil
+import time
+from datetime import datetime, timedelta
+
+def check_and_kill_process(process_name, max_duration_minutes):
+    # Get the current time
+    current_time = datetime.now()
+    
+    # Loop through all running processes
+    for process in psutil.process_iter(attrs=['pid', 'name', 'create_time', 'cmdline']):
+        try:
+            # Check if the process command line contains the target process name
+            cmdline = process.info['cmdline']
+            if cmdline and process_name in cmdline:
+                # Calculate the process runtime
+                create_time = datetime.fromtimestamp(process.info['create_time'])
+                runtime = current_time - create_time
+                
+                # Check if the runtime exceeds the max duration
+                if runtime > timedelta(minutes=max_duration_minutes):
+                    print(f"Killing process {process.info['pid']} ({cmdline}) - Running for {runtime}")
+                    process.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            # Skip processes that cannot be accessed
+            pass
+
+# Specify the process name and maximum duration
+process_name_to_check = 'pull_data.py'
+max_duration_minutes = 45
+
+# Run the check-and-kill function
+check_and_kill_process(process_name_to_check, max_duration_minutes)
