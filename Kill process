@@ -2,31 +2,36 @@ import psutil
 import time
 from datetime import datetime, timedelta
 
-def check_and_kill_process(process_name, max_duration_minutes):
-    # Get the current time
-    current_time = datetime.now()
-    
-    # Loop through all running processes
-    for process in psutil.process_iter(attrs=['pid', 'name', 'create_time', 'cmdline']):
+def check_and_kill_long_running_process(process_name, time_limit_minutes):
+    """
+    Checks for a process containing `process_name` in its command line.
+    If running for more than `time_limit_minutes`, it terminates the process.
+    """
+    time_limit = timedelta(minutes=time_limit_minutes)
+    now = datetime.now()
+
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
         try:
-            # Check if the process command line contains the target process name
-            cmdline = process.info['cmdline']
-            if cmdline and process_name in cmdline:
-                # Calculate the process runtime
-                create_time = datetime.fromtimestamp(process.info['create_time'])
-                runtime = current_time - create_time
-                
-                # Check if the runtime exceeds the max duration
-                if runtime > timedelta(minutes=max_duration_minutes):
-                    print(f"Killing process {process.info['pid']} ({cmdline}) - Running for {runtime}")
-                    process.terminate()
+            # Check if the process command line contains the target name
+            cmdline = proc.info['cmdline']
+            if cmdline and any(process_name in arg for arg in cmdline):
+                # Calculate how long the process has been running
+                create_time = datetime.fromtimestamp(proc.info['create_time'])
+                runtime = now - create_time
+
+                if runtime > time_limit:
+                    print(f"Terminating process {proc.info['name']} (PID: {proc.info['pid']}) "
+                          f"running for {runtime}.")
+                    proc.terminate()
+                    proc.wait()  # Wait for the process to terminate
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            # Skip processes that cannot be accessed
-            pass
+            # Skip processes that no longer exist or cannot be accessed
+            continue
 
-# Specify the process name and maximum duration
-process_name_to_check = 'pull_data.py'
-max_duration_minutes = 45
+if __name__ == "__main__":
+    # Process name to search in command line
+    process_name = "pull_data.py"
+    # Time limit in minutes
+    time_limit_minutes = 45
 
-# Run the check-and-kill function
-check_and_kill_process(process_name_to_check, max_duration_minutes)
+    check_and_kill_long_running_process(process_name, time_limit_minutes)
