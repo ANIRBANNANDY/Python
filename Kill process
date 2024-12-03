@@ -14,53 +14,40 @@ def log_message(log_file, message):
     with open(log_file, "a") as log:
         log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
 
-def log_termination(log_file, process_name, pid, runtime):
-    """Logs the details of the terminated process."""
-    log_message(log_file, f"Terminated process: {process_name}, PID: {pid}, Runtime: {runtime}")
-
-def log_folder_check(log_file, folder_path, latest_file, last_modified_time, time_diff):
-    """Logs the details of the folder check."""
-    log_message(
-        log_file,
-        f"Folder checked: {folder_path}, Latest file: {latest_file}, "
-        f"Last modified: {last_modified_time}, Time difference: {time_diff}"
-    )
-
-def check_latest_file(folder_path, time_limit_minutes, log_file):
-    """
-    Checks if the latest modified file in a folder is older than `time_limit_minutes`.
-    Logs the details of the check and returns True if condition is met.
-    """
+def find_latest_folder(root_folder, log_file):
+    """Finds the latest folder in the specified root folder."""
     try:
-        if not os.path.exists(folder_path):
-            log_message(log_file, f"Folder not found: {folder_path}")
-            return False
+        subfolders = [os.path.join(root_folder, d) for d in os.listdir(root_folder) if os.path.isdir(os.path.join(root_folder, d))]
+        if not subfolders:
+            log_message(log_file, f"No subfolders found in: {root_folder}")
+            return None
 
-        files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+        latest_folder = max(subfolders, key=os.path.getmtime)
+        log_message(log_file, f"Latest folder found: {latest_folder}")
+        return latest_folder
+    except Exception as e:
+        log_message(log_file, f"Error finding latest folder in {root_folder}: {e}")
+        return None
+
+def find_latest_file(data_folder, log_file):
+    """Finds the latest file in the specified data folder."""
+    try:
+        files = [os.path.join(data_folder, f) for f in os.listdir(data_folder) if os.path.isfile(os.path.join(data_folder, f))]
         if not files:
-            log_message(log_file, f"No files found in folder: {folder_path}")
-            return False
+            log_message(log_file, f"No files found in: {data_folder}")
+            return None, None
 
         latest_file = max(files, key=os.path.getmtime)
         last_modified_time = datetime.fromtimestamp(os.path.getmtime(latest_file))
-        now = datetime.now()
-        time_diff = now - last_modified_time
-
-        log_folder_check(log_file, folder_path, latest_file, last_modified_time, time_diff)
-
-        if time_diff > timedelta(minutes=time_limit_minutes):
-            log_message(log_file, f"Condition met: Latest file {latest_file} is older than {time_limit_minutes} minutes.")
-            return True
-        else:
-            log_message(log_file, f"Condition not met: Latest file {latest_file} was modified {time_diff} ago.")
-            return False
+        log_message(log_file, f"Latest file found: {latest_file}, Last modified: {last_modified_time}")
+        return latest_file, last_modified_time
     except Exception as e:
-        log_message(log_file, f"Error checking folder {folder_path}: {e}")
-        return False
+        log_message(log_file, f"Error finding latest file in {data_folder}: {e}")
+        return None, None
 
-def check_and_kill_process_if_condition_met(process_name, process_time_limit_minutes, folder_path, folder_time_limit_minutes, log_file):
+def check_and_kill_process_if_condition_met(process_name, process_time_limit_minutes, root_folder, folder_time_limit_minutes, log_file):
     """
-    Checks a process's runtime and the folder's latest file modification time.
+    Checks a process's runtime and the latest file modification time in a specific folder hierarchy.
     Only terminates the process if both conditions are met.
     """
     time_limit = timedelta(minutes=process_time_limit_minutes)
@@ -76,25 +63,38 @@ def check_and_kill_process_if_condition_met(process_name, process_time_limit_min
                 log_message(log_file, f"Found process: {proc.info['name']}, PID: {proc.info['pid']}, Runtime: {runtime}")
 
                 if runtime > time_limit:
-                    # Check the folder's latest file condition
-                    folder_condition_met = check_latest_file(folder_path, folder_time_limit_minutes, log_file)
+                    # Step 1: Find the latest folder in the root folder
+                    latest_folder = find_latest_folder(root_folder, log_file)
+                    if not latest_folder:
+                        log_message(log_file, f"Skipping process {proc.info['name']} (PID: {proc.info['pid']}) because no valid folder was found.")
+                        continue
 
-                    if folder_condition_met:
+                    # Step 2: Check the latest file in the `data` subfolder
+                    data_folder = os.path.join(latest_folder, "data")
+                    latest_file, last_modified_time = find_latest_file(data_folder, log_file)
+                    if not latest_file or not last_modified_time:
+                        log_message(log_file, f"Skipping process {proc.info['name']} (PID: {proc.info['pid']}) because no valid file was found in {data_folder}.")
+                        continue
+
+                    # Step 3: Check if the latest file is older than the time limit
+                    time_diff = now - last_modified_time
+                    if time_diff > timedelta(minutes=folder_time_limit_minutes):
                         print(f"Terminating process {proc.info['name']} (PID: {proc.info['pid']}) running for {runtime}.")
                         proc.terminate()
                         proc.wait()  # Wait for the process to terminate
-                        log_termination(log_file, proc.info['name'], proc.info['pid'], runtime)
+                        log_message(log_file, f"Terminated process: {proc.info['name']}, PID: {proc.info['pid']}, Runtime: {runtime}, "
+                                              f"Latest file: {latest_file}, Time since last modification: {time_diff}")
                     else:
-                        log_message(log_file, f"Process {proc.info['name']} (PID: {proc.info['pid']}) not terminated "
-                                              f"because folder condition was not met.")
+                        log_message(log_file, f"Process {proc.info['name']} (PID: {proc.info['pid']}) not terminated because "
+                                              f"latest file {latest_file} was modified {time_diff} ago.")
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
 
 if __name__ == "__main__":
-    # Process and folder check configurations
+    # Configuration
     process_name = "pull_data.py"
     process_time_limit_minutes = 45
-    folder_path = "path/to/your/folder"  # Replace with the folder path to monitor
+    root_folder = "path/to/your/root/folder"  # Replace with the root folder path
     folder_time_limit_minutes = 20
 
     # Set up logging
@@ -102,6 +102,6 @@ if __name__ == "__main__":
     log_message(log_file, "Script started.")
 
     # Check processes and conditionally terminate
-    check_and_kill_process_if_condition_met(process_name, process_time_limit_minutes, folder_path, folder_time_limit_minutes, log_file)
+    check_and_kill_process_if_condition_met(process_name, process_time_limit_minutes, root_folder, folder_time_limit_minutes, log_file)
 
     log_message(log_file, "Script finished.")
