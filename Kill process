@@ -9,11 +9,22 @@ def setup_logging():
     log_file = os.path.join(log_dir, f"log_{datetime.now().strftime('%Y-%m-%d')}.txt")
     return log_file
 
-def log_termination(log_file, process_name, pid, runtime):
-    """Logs the details of the terminated process to a file."""
+def log_message(log_file, message):
+    """Logs a message to the log file with a timestamp."""
     with open(log_file, "a") as log:
-        log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Terminated process: {process_name}, "
-                  f"PID: {pid}, Runtime: {runtime}\n")
+        log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
+
+def log_termination(log_file, process_name, pid, runtime):
+    """Logs the details of the terminated process."""
+    log_message(log_file, f"Terminated process: {process_name}, PID: {pid}, Runtime: {runtime}")
+
+def log_folder_check(log_file, folder_path, latest_file, last_modified_time, time_diff):
+    """Logs the details of the folder check."""
+    log_message(
+        log_file,
+        f"Folder checked: {folder_path}, Latest file: {latest_file}, "
+        f"Last modified: {last_modified_time}, Time difference: {time_diff}"
+    )
 
 def check_and_kill_long_running_process(process_name, time_limit_minutes, log_file):
     """
@@ -25,31 +36,64 @@ def check_and_kill_long_running_process(process_name, time_limit_minutes, log_fi
 
     for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
         try:
-            # Check if the process command line contains the target name
             cmdline = proc.info['cmdline']
             if cmdline and any(process_name in arg for arg in cmdline):
-                # Calculate how long the process has been running
                 create_time = datetime.fromtimestamp(proc.info['create_time'])
                 runtime = now - create_time
 
+                log_message(log_file, f"Found process: {proc.info['name']}, PID: {proc.info['pid']}, Runtime: {runtime}")
+
                 if runtime > time_limit:
-                    print(f"Terminating process {proc.info['name']} (PID: {proc.info['pid']}) "
-                          f"running for {runtime}.")
+                    print(f"Terminating process {proc.info['name']} (PID: {proc.info['pid']}) running for {runtime}.")
                     proc.terminate()
                     proc.wait()  # Wait for the process to terminate
                     log_termination(log_file, proc.info['name'], proc.info['pid'], runtime)
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            # Skip processes that no longer exist or cannot be accessed
             continue
 
+def check_folder_latest_file(folder_path, time_limit_minutes, log_file):
+    """
+    Checks if the latest modified file in a folder is older than `time_limit_minutes`.
+    Logs the details of the check.
+    """
+    try:
+        if not os.path.exists(folder_path):
+            log_message(log_file, f"Folder not found: {folder_path}")
+            return
+
+        files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+        if not files:
+            log_message(log_file, f"No files found in folder: {folder_path}")
+            return
+
+        latest_file = max(files, key=os.path.getmtime)
+        last_modified_time = datetime.fromtimestamp(os.path.getmtime(latest_file))
+        now = datetime.now()
+        time_diff = now - last_modified_time
+
+        log_folder_check(log_file, folder_path, latest_file, last_modified_time, time_diff)
+
+        if time_diff > timedelta(minutes=time_limit_minutes):
+            log_message(log_file, f"Latest file {latest_file} in folder {folder_path} is older than {time_limit_minutes} minutes.")
+            print(f"Warning: Latest file {latest_file} in folder {folder_path} is older than {time_limit_minutes} minutes.")
+    except Exception as e:
+        log_message(log_file, f"Error checking folder {folder_path}: {e}")
+
 if __name__ == "__main__":
-    # Process name to search in command line
+    # Process and folder check configurations
     process_name = "pull_data.py"
-    # Time limit in minutes
-    time_limit_minutes = 45
+    process_time_limit_minutes = 45
+    folder_path = "path/to/your/folder"  # Replace with the folder path to monitor
+    folder_time_limit_minutes = 20
 
     # Set up logging
     log_file = setup_logging()
+    log_message(log_file, "Script started.")
 
-    # Run the process check and kill function
-    check_and_kill_long_running_process(process_name, time_limit_minutes, log_file)
+    # Check processes
+    check_and_kill_long_running_process(process_name, process_time_limit_minutes, log_file)
+
+    # Check folder for latest file
+    check_folder_latest_file(folder_path, folder_time_limit_minutes, log_file)
+
+    log_message(log_file, "Script finished.")
