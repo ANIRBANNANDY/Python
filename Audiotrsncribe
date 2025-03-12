@@ -1,24 +1,27 @@
 from pywinauto import Application
 import time
 
-# Connect to running Microsoft Teams app
+# Connect to the Microsoft Teams app
 app = Application(backend="uia").connect(title_re=".*Microsoft Teams.*")
 
+# Get the main Teams window
+teams_window = app.top_window()
+
 def extract_captions():
-    print("Extracting live captions from Teams window... Press Ctrl+C to stop.")
+    print("Extracting live captions from Teams... Press Ctrl+C to stop.")
 
     while True:
         try:
-            # Get the Teams window
-            window = app.window(title_re=".*Microsoft Teams.*")
+            # Get all visible text from the Teams window
+            text_elements = teams_window.children()
 
-            # Extract visible text
-            text = window.window(class_name="Chrome_WidgetWin_0").window_text()
-            
-            # Filter only caption-related text
-            if text and len(text) > 5:  
-                print("Live Caption:", text)
-            
+            for elem in text_elements:
+                text = elem.window_text()
+                
+                # Only print text if it's non-empty and longer than a few characters
+                if text and len(text) > 5:
+                    print("Live Caption:", text)
+
         except Exception as e:
             print("Error:", e)
 
