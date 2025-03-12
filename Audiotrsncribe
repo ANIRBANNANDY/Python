@@ -1,24 +1,21 @@
-import whisper
 import sounddevice as sd
 import numpy as np
+import whisper
 
-# Load the Whisper model
 model = whisper.load_model("base")
 
-# Function to process live audio
 def callback(indata, frames, time, status):
     if status:
         print(status)
     audio_data = np.frombuffer(indata, dtype=np.float32)
     result = model.transcribe(audio_data)
-    print("Whisper:", result["text"])
+    print("Transcription:", result["text"])
 
-# Start recording from the microphone
 with sd.InputStream(callback=callback, samplerate=16000, channels=1):
     print("Listening... Press Ctrl+C to stop")
     while True:
         try:
-            pass  # Keeps the loop running
+            pass  # Keeps the script running
         except KeyboardInterrupt:
             print("\nStopping transcription...")
             break
