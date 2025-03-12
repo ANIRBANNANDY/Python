@@ -1,30 +1,27 @@
-import queue
-import sounddevice as sd
-import vosk
-import json
+from pywinauto import Application
+import time
 
-# Set up the model (Replace 'path/to/model' with your actual model folder)
-model = vosk.Model("path/to/vosk-model-small-en-us-0.15")
-q = queue.Queue()
+# Connect to running Microsoft Teams app
+app = Application(backend="uia").connect(title_re=".*Microsoft Teams.*")
 
-def callback(indata, frames, time, status):
-    if status:
-        print(status)
-    q.put(bytes(indata))  # Add audio data to queue
+def extract_captions():
+    print("Extracting live captions from Teams window... Press Ctrl+C to stop.")
 
-# Set up microphone stream
-with sd.RawInputStream(samplerate=16000, blocksize=8000, device=None,
-                        dtype="int16", channels=1, callback=callback):
-    print("Listening... Press Ctrl+C to stop")
-    
-    recognizer = vosk.KaldiRecognizer(model, 16000)
-    
     while True:
         try:
-            data = q.get()
-            if recognizer.AcceptWaveform(data):
-                result = json.loads(recognizer.Result())
-                print("Vosk:", result["text"])
-        except KeyboardInterrupt:
-            print("\nStopping transcription...")
-            break
+            # Get the Teams window
+            window = app.window(title_re=".*Microsoft Teams.*")
+
+            # Extract visible text
+            text = window.window(class_name="Chrome_WidgetWin_0").window_text()
+            
+            # Filter only caption-related text
+            if text and len(text) > 5:  
+                print("Live Caption:", text)
+            
+        except Exception as e:
+            print("Error:", e)
+
+        time.sleep(2)  # Refresh every 2 seconds
+
+extract_captions()
