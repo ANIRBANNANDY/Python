@@ -1,21 +1,30 @@
+import queue
 import sounddevice as sd
-import numpy as np
-import whisper
+import vosk
+import json
 
-model = whisper.load_model("base")
+# Set up the model (Replace 'path/to/model' with your actual model folder)
+model = vosk.Model("path/to/vosk-model-small-en-us-0.15")
+q = queue.Queue()
 
 def callback(indata, frames, time, status):
     if status:
         print(status)
-    audio_data = np.frombuffer(indata, dtype=np.float32)
-    result = model.transcribe(audio_data)
-    print("Transcription:", result["text"])
+    q.put(bytes(indata))  # Add audio data to queue
 
-with sd.InputStream(callback=callback, samplerate=16000, channels=1):
+# Set up microphone stream
+with sd.RawInputStream(samplerate=16000, blocksize=8000, device=None,
+                        dtype="int16", channels=1, callback=callback):
     print("Listening... Press Ctrl+C to stop")
+    
+    recognizer = vosk.KaldiRecognizer(model, 16000)
+    
     while True:
         try:
-            pass  # Keeps the script running
+            data = q.get()
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                print("Vosk:", result["text"])
         except KeyboardInterrupt:
             print("\nStopping transcription...")
             break
