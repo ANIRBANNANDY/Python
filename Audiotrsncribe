@@ -1,25 +1,24 @@
-import speech_recognition as sr
+import whisper
+import sounddevice as sd
+import numpy as np
 
-# Initialize recognizer
-recognizer = sr.Recognizer()
+# Load the Whisper model
+model = whisper.load_model("base")
 
-# Use the default microphone as the audio source
-with sr.Microphone() as source:
-    print("Listening... (Press Ctrl+C to stop)")
-    
+# Function to process live audio
+def callback(indata, frames, time, status):
+    if status:
+        print(status)
+    audio_data = np.frombuffer(indata, dtype=np.float32)
+    result = model.transcribe(audio_data)
+    print("Whisper:", result["text"])
+
+# Start recording from the microphone
+with sd.InputStream(callback=callback, samplerate=16000, channels=1):
+    print("Listening... Press Ctrl+C to stop")
     while True:
         try:
-            # Listen for a phrase
-            audio = recognizer.listen(source, timeout=5)
-            
-            # Recognize speech using Google Speech API
-            text = recognizer.recognize_google(audio)
-            print("You said:", text)
-        
-        except sr.UnknownValueError:
-            print("Could not understand the audio")
-        except sr.RequestError:
-            print("Could not request results from Google Speech API")
+            pass  # Keeps the loop running
         except KeyboardInterrupt:
             print("\nStopping transcription...")
             break
