@@ -1,0 +1,25 @@
+import speech_recognition as sr
+
+# Initialize recognizer
+recognizer = sr.Recognizer()
+
+# Use the default microphone as the audio source
+with sr.Microphone() as source:
+    print("Listening... (Press Ctrl+C to stop)")
+    
+    while True:
+        try:
+            # Listen for a phrase
+            audio = recognizer.listen(source, timeout=5)
+            
+            # Recognize speech using Google Speech API
+            text = recognizer.recognize_google(audio)
+            print("You said:", text)
+        
+        except sr.UnknownValueError:
+            print("Could not understand the audio")
+        except sr.RequestError:
+            print("Could not request results from Google Speech API")
+        except KeyboardInterrupt:
+            print("\nStopping transcription...")
+            break
