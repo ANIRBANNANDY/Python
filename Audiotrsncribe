@@ -1,44 +1,27 @@
-from pywinauto import Application
-import time
+# Install Python dependencies from requirements.txt
+try {
+    Write-Host "`n--- Installing Python Dependencies ---`n"
+    if (Test-Path ".\requirements.txt") {
+        pip install -r requirements.txt -ErrorAction Stop
+        Write-Host "Python dependencies installed successfully."
+    } else {
+        Write-Warning "requirements.txt not found in the current directory."
+    }
+} catch {
+    Write-Error "Failed to install Python dependencies: $_"
+}
 
-# Connect to the running Microsoft Teams application
-try:
-    app = Application(backend="uia").connect(title_re=".*Microsoft Teams.*")
-    print("[INFO] Successfully connected to Microsoft Teams.")
-except Exception as e:
-    print("[ERROR] Could not connect to Teams:", e)
-    exit()
-
-# Get the main Teams window
-teams_window = app.top_window()
-print("[INFO] Found Teams window:", teams_window.window_text())
-
-def extract_captions():
-    print("[INFO] Extracting live captions... Press Ctrl+C to stop.")
-
-    while True:
-        try:
-            # Get all child elements inside Teams
-            text_elements = teams_window.children()
-            print(f"[DEBUG] Found {len(text_elements)} UI elements.")
-
-            found_text = False  # Track if we find any text
-
-            for index, elem in enumerate(text_elements):
-                text = elem.window_text()
-                print(f"[DEBUG] Element {index}: {text}")  # Print each element's text
-
-                # Only print meaningful text
-                if text and len(text) > 5:
-                    print("\n[CAPTION]:", text, "\n")
-                    found_text = True
-
-            if not found_text:
-                print("[DEBUG] No meaningful captions detected.")
-
-        except Exception as e:
-            print("[ERROR] Exception occurred:", e)
-
-        time.sleep(2)  # Refresh every 2 seconds
-
-extract_captions()
+# Change directory to 'lib' and install Node.js dependencies
+try {
+    Write-Host "`n--- Installing Node.js Dependencies from ./lib/package.json ---`n"
+    if (Test-Path ".\lib\package.json") {
+        Push-Location .\lib
+        npm install --silent
+        Pop-Location
+        Write-Host "Node.js dependencies installed successfully in lib folder."
+    } else {
+        Write-Warning "package.json not found in the 'lib' folder."
+    }
+} catch {
+    Write-Error "Failed to install Node.js dependencies: $_"
+}
