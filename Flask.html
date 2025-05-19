@@ -1,47 +1,64 @@
-<!doctype html>
-<html lang="en">
+<!-- login.html --><!DOCTYPE html><html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Process Monitor</title>
-    <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid black;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Login</title>
 </head>
 <body>
-    <h1>Process Monitor</h1>
-    <table>
-        <tr>
-            <th>PID</th>
-            <th>Name</th>
-            <th>User</th>
-            <th>Full Path</th>
-            <th>Command Line</th>
-            <th>Start Time</th>
-            <th>Action</th>
-        </tr>
-        {% for process in processes %}
-        <tr>
-            <td>{{ process.pid }}</td>
-            <td>{{ process.name }}</td>
-            <td>{{ process.user }}</td>
-            <td>{{ process.full_path }}</td>
-            <td>{{ process.cmdline }}</td>
-            <td>{{ process.start_time }}</td>
-            <td><a href="{{ url_for('kill_process', pid=process.pid) }}">Kill</a></td>
-        </tr>
-        {% endfor %}
-    </table>
+  <h2>Login</h2>
+  <form method="POST">
+    <label>Username:</label>
+    <input type="text" name="username" required><br>
+    <label>Password:</label>
+    <input type="password" name="password" required><br>
+    <input type="submit" value="Login">
+  </form>
+  <p><a href="/register">Register</a> | <a href="/forgot">Forgot Password?</a></p>
+</body>
+</html><!-- register.html --><!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Register</title>
+</head>
+<body>
+  <h2>Register</h2>
+  <form method="POST">
+    <label>Username:</label>
+    <input type="text" name="username" required><br>
+    <label>Email:</label>
+    <input type="email" name="email" required><br>
+    <label>Password:</label>
+    <input type="password" name="password" required><br>
+    <input type="submit" value="Register">
+  </form>
+  <p><a href="/login">Back to Login</a></p>
+</body>
+</html><!-- forgot.html --><!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Forgot Password</title>
+</head>
+<body>
+  <h2>Forgot Password</h2>
+  <form method="POST">
+    <label>Email:</label>
+    <input type="email" name="email" required><br>
+    <input type="submit" value="Send Reset Email">
+  </form>
+  <p><a href="/login">Back to Login</a></p>
+</body>
+</html><!-- reset.html --><!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reset Password</title>
+</head>
+<body>
+  <h2>Reset Password</h2>
+  <form method="POST">
+    <label>Email:</label>
+    <input type="email" name="email" required><br>
+    <label>New Password:</label>
+    <input type="password" name="password" required><br>
+    <input type="submit" value="Reset Password">
+  </form>
 </body>
 </html>
