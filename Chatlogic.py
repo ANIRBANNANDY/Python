@@ -1,33 +1,29 @@
-import sqlite3
+import getpass  # Already in standard library
 
-def get_response(user_input):
-    # Connect to the database
-    conn = sqlite3.connect('chatbot.db')
-    cursor = conn.cursor()
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
 
-    # Search for an exact match in the database
-    cursor.execute("SELECT bot_response FROM responses WHERE user_input = ?", (user_input.lower(),))
-    result = cursor.fetchone()
+        # Get current OS user
+        os_user = getpass.getuser()
 
-    conn.close()
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT password_hash, email FROM users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        conn.close()
 
-    # Return the response or a default message
-    if result:
-        return result[0]
-    else:
-        return "Sorry, I don't understand that. Can you rephrase?"
+        if result and check_password_hash(result[0], password):
+            user_email = result[1]
 
-# Chatbot loop
-def chat():
-    print("Chatbot: Hello! Type 'bye' to exit.")
-    while True:
-        user_input = input("You: ").strip().lower()
-        if user_input == 'bye':
-            print("Chatbot: Goodbye!")
-            break
-        response = get_response(user_input)
-        print(f"Chatbot: {response}")
-
-# Start the chatbot
-if __name__ == "__main__":
-    chat()
+            # Compare OS user with expected login (e.g., matching email username part)
+            if os_user.lower() in user_email.lower():
+                session['username'] = username
+                return redirect(url_for('index'))
+            else:
+                return 'OS login does not match user email'
+        else:
+            return 'Invalid credentials'
+    return render_template('login.html')
