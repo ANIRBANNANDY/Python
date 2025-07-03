@@ -361,4 +361,24 @@ if __name__ == "__main__":
 
     # Create local directories if they don't exist
     os.makedirs(config['SFTP_SERVER_DOWNLOAD']['local_download_path'], exist_ok=True)
-    os.makedirs(config['SFTP_SER
+    os.makedirs(config['SFTP_SERVER_UPLOAD']['local_upload_path'], exist_ok=True)
+
+    # Create a dummy file for upload test if it doesn't exist
+    upload_file_path = os.path.join(config['SFTP_SERVER_UPLOAD']['local_upload_path'], config['FILES']['file_to_upload'])
+    if not os.path.exists(upload_file_path):
+        with open(upload_file_path, 'w') as f:
+            f.write("This is a test file for upload.")
+        logging.info(f"Created dummy file for upload: {upload_file_path}")
+
+    # Run main operations
+    logging.info("\n--- Running Main Download Operations ---")
+    run_download_operations(config)
+
+    logging.info("\n--- Running Main Upload Operations ---")
+    run_upload_operations(config)
+
+    # Run test cases if enabled
+    if config.getboolean('TEST_CASES', 'enable_tests', fallback=False):
+        run_test_cases(config)
+
+    logging.info("\nSFTP operations complete. Check 'sftp_operations.log' for details.")
