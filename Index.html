@@ -4,16 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enterprise Process Monitor</title>
+    
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #f4f7f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .card { border: none; border-radius: 12px; }
-        .status-processing { color: #fd7e14; font-weight: bold; }
-        .status-idle { color: #198754; }
-        .table thead { background-color: #212529; color: white; }
-        .refresh-text { font-size: 0.85rem; color: #6c757d; }
-        .killing-mode { opacity: 0.6; pointer-events: none; }
-    </style>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container py-5">
@@ -25,7 +19,7 @@
             <div class="text-end">
                 <div id="last-update" class="refresh-text mb-2">Initializing...</div>
                 <button class="btn btn-primary shadow-sm" onclick="loadData()">
-                    <i class="bi bi-arrow-clockwise"></i> Refresh Now
+                    Refresh Now
                 </button>
             </div>
         </div>
@@ -36,7 +30,7 @@
                     <thead>
                         <tr>
                             <th class="ps-4">Server IP</th>
-                            <th>File Name (ci_job.pl)</th>
+                            <th>File Name</th>
                             <th>Status</th>
                             <th class="text-end pe-4">Control</th>
                         </tr>
@@ -49,7 +43,6 @@
     </div>
 
     <script>
-        // Data passed from Python via Jinja2
         const config = {{ config|tojson }};
 
         async function loadData() {
@@ -63,14 +56,14 @@
                     const data = await res.json();
                     
                     if (data.files.length === 0) {
-                        html += `<tr><td class="ps-4 text-muted">${ip}</td><td colspan="3" class="text-center italic">No files found</td></tr>`;
+                        html += `<tr><td class="ps-4 text-muted">${ip}</td><td colspan="3" class="text-center text-muted small italic">No files found</td></tr>`;
                     }
 
                     data.files.forEach(f => {
                         const statusClass = f.status === 'Processing' ? 'status-processing' : 'status-idle';
                         html += `
                             <tr>
-                                <td class="ps-4 fw-bold">${ip}</td>
+                                <td class="ps-4"><span class="server-badge">${ip}</span></td>
                                 <td><code>${f.name}</code></td>
                                 <td><span class="${statusClass} text-uppercase" style="font-size: 0.8rem;">● ${f.status}</span></td>
                                 <td class="text-end pe-4">
@@ -82,7 +75,7 @@
                             </tr>`;
                     });
                 } catch (e) {
-                    html += `<tr class="table-danger"><td class="ps-4">${ip}</td><td colspan="3">⚠️ Connection Timeout (Is Agent running?)</td></tr>`;
+                    html += `<tr class="table-danger"><td class="ps-4">${ip}</td><td colspan="3">⚠️ Connection Timeout</td></tr>`;
                 }
             }
             
@@ -92,7 +85,7 @@
         }
 
         async function killFile(btn, ip, filename) {
-            if (!confirm(`This will kill Perl, then SAS, then verify for 15 seconds. Proceed?`)) return;
+            if (!confirm(`This will kill Perl (ci_job.pl), then SAS.exe, and verify for 15 seconds. Proceed?`)) return;
             
             const originalText = btn.innerHTML;
             btn.disabled = true;
@@ -108,19 +101,18 @@
                 if (res.ok) {
                     loadData();
                 } else {
-                    alert("Verification failed or process timed out.");
+                    alert("Action failed.");
                     btn.disabled = false;
                     btn.innerHTML = originalText;
                 }
             } catch (e) {
-                alert("Network communication error.");
+                alert("Network error.");
                 btn.disabled = false;
                 btn.innerHTML = originalText;
             }
         }
 
-        // Auto Refresh: 15 Minutes (15 * 60 * 1000 ms)
-        setInterval(loadData, 900000);
+        setInterval(loadData, 900000); // 15 mins
         window.onload = loadData;
     </script>
 </body>
