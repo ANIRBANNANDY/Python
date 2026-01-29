@@ -59,6 +59,27 @@
                         </div>
                     </div>
                 </div>
+                <div class="card shadow-sm queue-card">
+    <div class="explorer-header d-flex justify-content-between align-items-center">
+        <span>Server 1: File Queue</span>
+        <span class="badge bg-purple" style="background-color: #6f42c1;">Live</span>
+    </div>
+    <div class="p-3">
+        <div id="queue-container">
+            <table class="table table-sm small">
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="queue-list">
+                    <tr><td colspan="2" class="text-center">Loading queue...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
             </div>
         </div>
     </div>
@@ -133,8 +154,47 @@
             } catch (e) { alert("Error"); btn.disabled = false; }
         }
 
-        setInterval(loadData, 900000); // 15 min refresh
-        window.onload = loadData;
-    </script>
+        // NEW: Function to specifically monitor Server 1's folder
+    async function updateQueue() {
+        const server1Ip = config.servers[0]; // Assumes first IP in config is Server 1
+        const queueList = document.getElementById('queue-list');
+        
+        try {
+            const res = await fetch(`http://${server1Ip}:${config.agent_port}/scan`);
+            const data = await res.json();
+            
+            let html = '';
+            if (data.files.length === 0) {
+                html = '<tr><td colspan="2" class="text-center text-muted">No files in queue</td></tr>';
+            } else {
+                data.files.forEach(file => {
+                    const statusBadge = file.status === 'Processing' 
+                        ? '<span class="badge badge-active text-dark">Processing</span>' 
+                        : '<span class="badge badge-pending">Pending / Idle</span>';
+                    
+                    html += `
+                        <tr>
+                            <td><code>${file.name}</code></td>
+                            <td>${statusBadge}</td>
+                        </tr>`;
+                });
+            }
+            queueList.innerHTML = html;
+        } catch (e) {
+            queueList.innerHTML = '<tr><td colspan="2" class="text-danger">Failed to sync queue</td></tr>';
+        }
+    }
+
+    // Update the window.onload and intervals
+    const originalLoadData = loadData;
+    loadData = async function() {
+        await originalLoadData();
+        await updateQueue();
+    }
+
+    // Refresh queue more frequently than the 15-min global refresh
+    setInterval(updateQueue, 30000); // Check Queue every 30 seconds
+    window.onload = loadData;
+</script>
 </body>
 </html>
