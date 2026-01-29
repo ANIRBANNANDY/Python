@@ -82,3 +82,19 @@ body {
     font-weight: bold;
 }
 
+.queue-card {
+    border-top: 4px solid #6f42c1; /* Purple theme for Queue */
+    margin-top: 20px;
+}
+
+.badge-pending {
+    background-color: #e9ecef;
+    color: #495057;
+    border: 1px solid #ced4da;
+}
+
+.badge-active {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
