@@ -64,15 +64,18 @@ def kill_sequence(filename):
 
 @app.route('/scan', methods=['GET'])
 def scan():
+    active_perl_cmds = get_perl_processes() # Existing function that looks for perl + ci_job.pl
     files_list = []
+    
     if os.path.exists(config['target_folder']):
         for f in os.listdir(config['target_folder']):
-            is_busy = False
-            for proc in psutil.process_iter(['name', 'username', 'cmdline']):
-                if is_target_proc(proc, "perl", config['perl_filter']) and f in " ".join(proc.info['cmdline'] or []):
-                    is_busy = True
-                    break
-            files_list.append({"name": f, "status": "Processing" if is_busy else "Idle"})
+            # Logic: If the filename is found in any running Perl command line
+            is_busy = any(f in cmd for cmd in active_perl_cmds)
+            files_list.append({
+                "name": f, 
+                "status": "Processing" if is_busy else "Idle"
+            })
+    
     return jsonify({"server": socket.gethostname(), "files": files_list})
 
 @app.route('/kill-delete', methods=['POST'])
@@ -80,6 +83,15 @@ def handle_kill():
     filename = request.json.get('filename')
     success = kill_sequence(filename)
     return jsonify({"status": "success" if success else "error"})
+
+@app.route('/folders', methods=['GET'])
+def list_secondary_folders():
+    folder_path = config['secondary_folder']
+    folders = []
+    if os.path.exists(folder_path):
+        # List only directories, not files
+        folders = [d for d in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, d))]
+    return jsonify({"server": socket.gethostname(), "folders": folders})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config['agent_port'])
