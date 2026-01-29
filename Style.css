@@ -1,0 +1,48 @@
+/* static/css/style.css */
+
+body { 
+    background-color: #f4f7f9; 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+}
+
+.card { 
+    border: none; 
+    border-radius: 12px; 
+}
+
+.status-processing { 
+    color: #fd7e14; 
+    font-weight: bold; 
+}
+
+.status-idle { 
+    color: #198754; 
+}
+
+.table thead { 
+    background-color: #212529; 
+    color: white; 
+}
+
+.refresh-text { 
+    font-size: 0.85rem; 
+    color: #6c757d; 
+}
+
+.killing-mode { 
+    opacity: 0.6; 
+    pointer-events: none; 
+}
+
+.server-badge {
+    font-size: 0.9rem;
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+}
+
+/* Custom Spinner spacing */
+.spinner-border-sm {
+    margin-right: 5px;
+}
