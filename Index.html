@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Process Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f4f7f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { border: none; border-radius: 12px; }
+        .status-processing { color: #fd7e14; font-weight: bold; }
+        .status-idle { color: #198754; }
+        .table thead { background-color: #212529; color: white; }
+        .refresh-text { font-size: 0.85rem; color: #6c757d; }
+        .killing-mode { opacity: 0.6; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <div class="d-flex justify-content-between align-items-end mb-4">
+            <div>
+                <h2 class="fw-bold mb-0">Multi-Server Monitor</h2>
+                <p class="text-muted mb-0">Targeting User: <span class="badge bg-info text-dark">{{ config.target_user }}</span></p>
+            </div>
+            <div class="text-end">
+                <div id="last-update" class="refresh-text mb-2">Initializing...</div>
+                <button class="btn btn-primary shadow-sm" onclick="loadData()">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh Now
+                </button>
+            </div>
+        </div>
+        
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">Server IP</th>
+                            <th>File Name (ci_job.pl)</th>
+                            <th>Status</th>
+                            <th class="text-end pe-4">Control</th>
+                        </tr>
+                    </thead>
+                    <tbody id="main-table">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data passed from Python via Jinja2
+        const config = {{ config|tojson }};
+
+        async function loadData() {
+            const table = document.getElementById('main-table');
+            table.classList.add('killing-mode');
+            
+            let html = '';
+            for (let ip of config.servers) {
+                try {
+                    const res = await fetch(`http://${ip}:${config.agent_port}/scan`);
+                    const data = await res.json();
+                    
+                    if (data.files.length === 0) {
+                        html += `<tr><td class="ps-4 text-muted">${ip}</td><td colspan="3" class="text-center italic">No files found</td></tr>`;
+                    }
+
+                    data.files.forEach(f => {
+                        const statusClass = f.status === 'Processing' ? 'status-processing' : 'status-idle';
+                        html += `
+                            <tr>
+                                <td class="ps-4 fw-bold">${ip}</td>
+                                <td><code>${f.name}</code></td>
+                                <td><span class="${statusClass} text-uppercase" style="font-size: 0.8rem;">● ${f.status}</span></td>
+                                <td class="text-end pe-4">
+                                    <button class="btn btn-outline-danger btn-sm px-3" 
+                                            onclick="killFile(this, '${ip}', '${f.name}')">
+                                        Stop & Delete
+                                    </button>
+                                </td>
+                            </tr>`;
+                    });
+                } catch (e) {
+                    html += `<tr class="table-danger"><td class="ps-4">${ip}</td><td colspan="3">⚠️ Connection Timeout (Is Agent running?)</td></tr>`;
+                }
+            }
+            
+            table.innerHTML = html;
+            table.classList.remove('killing-mode');
+            document.getElementById('last-update').innerText = "Last Checked: " + new Date().toLocaleTimeString();
+        }
+
+        async function killFile(btn, ip, filename) {
+            if (!confirm(`This will kill Perl, then SAS, then verify for 15 seconds. Proceed?`)) return;
+            
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Verifying...';
+            
+            try {
+                const res = await fetch(`http://${ip}:${config.agent_port}/kill-delete`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({filename: filename})
+                });
+                
+                if (res.ok) {
+                    loadData();
+                } else {
+                    alert("Verification failed or process timed out.");
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
+            } catch (e) {
+                alert("Network communication error.");
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // Auto Refresh: 15 Minutes (15 * 60 * 1000 ms)
+        setInterval(loadData, 900000);
+        window.onload = loadData;
+    </script>
+</body>
+</html>
