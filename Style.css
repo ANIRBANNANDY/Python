@@ -46,3 +46,39 @@ body {
 .spinner-border-sm {
     margin-right: 5px;
 }
+
+/* Add these to your existing style.css */
+
+.explorer-card {
+    background-color: #ffffff;
+    border-left: 4px solid #0d6efd;
+    height: fit-content;
+}
+
+.folder-list {
+    max-height: 400px;
+    overflow-y: auto;
+    list-style: none;
+    padding: 0;
+}
+
+.folder-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    font-size: 0.9rem;
+}
+
+.folder-item:before {
+    content: "📁";
+    margin-right: 10px;
+}
+
+.explorer-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    padding: 15px;
+    font-weight: bold;
+}
+
