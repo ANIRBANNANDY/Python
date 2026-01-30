@@ -270,3 +270,84 @@
         if(selectedFile) fetchLog();
     }, 5000);
             </script>
+
+<div class="card shadow-sm queue-card mt-3">
+    <div class="explorer-header d-flex justify-content-between align-items-center bg-light">
+        <span class="fw-bold">Queue Manager (Server 1)</span>
+        <button class="btn btn-sm btn-link p-0" onclick="updateQueue()">🔄</button>
+    </div>
+    <div class="p-2">
+        <div id="queue-container" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm table-borderless small mb-0">
+                <tbody id="queue-list">
+                    <tr><td class="text-center py-3">Loading queue files...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Fetch files from the independent Queue folder on Server 1
+    async function updateQueue() {
+        const server1Ip = config.servers[0]; 
+        const queueList = document.getElementById('queue-list');
+        
+        try {
+            const res = await fetch(`http://${server1Ip}:${config.agent_port}/get-queue`);
+            const data = await res.json();
+            
+            let html = '';
+            if (data.files.length === 0) {
+                html = '<tr><td class="text-center text-muted py-3">Queue is empty</td></tr>';
+            } else {
+                data.files.forEach(file => {
+                    html += `
+                        <tr class="border-bottom">
+                            <td class="align-middle"><code>${file.name}</code></td>
+                            <td class="text-end">
+                                <button class="btn btn-link text-danger btn-sm p-0 fw-bold" 
+                                        style="text-decoration:none"
+                                        onclick="confirmQueueDelete('${file.name}')">
+                                    [ Delete ]
+                                </button>
+                            </td>
+                        </tr>`;
+                });
+            }
+            queueList.innerHTML = html;
+        } catch (e) {
+            queueList.innerHTML = '<tr><td class="text-danger text-center">Connection error</td></tr>';
+        }
+    }
+
+    async function confirmQueueDelete(filename) {
+        if (!confirm(`Are you sure you want to permanently delete ${filename} from the queue folder?`)) return;
+        
+        const server1Ip = config.servers[0];
+        try {
+            const res = await fetch(`http://${server1Ip}:${config.agent_port}/delete-from-queue`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ filename: filename })
+            });
+            
+            if (res.ok) {
+                updateQueue(); // Refresh list immediately
+            } else {
+                alert("Could not delete file. It might be in use.");
+            }
+        } catch (e) {
+            alert("Network error.");
+        }
+    }
+
+    // Initialize
+    window.onload = () => {
+        loadData();    // Process monitor
+        updateQueue(); // Queue folder monitor
+    };
+    
+    // Refresh the queue every 60 seconds
+    setInterval(updateQueue, 60000);
+</script>
