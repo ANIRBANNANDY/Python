@@ -351,3 +351,77 @@
     // Refresh the queue every 60 seconds
     setInterval(updateQueue, 60000);
 </script>
+
+<script>
+    // ... (keep existing variables)
+
+    async function fetchFolders(ip) {
+        if (!ip) return;
+        selectedIp = ip; // Set global IP so log viewer knows which server to talk to
+        const list = document.getElementById('folder-list');
+        list.innerHTML = '<li class="p-3 text-center"><div class="spinner-border spinner-border-sm"></div></li>';
+        
+        try {
+            const res = await fetch(`http://${ip}:${config.agent_port}/folders`);
+            const data = await res.json();
+            
+            let html = '';
+            if (data.folders.length === 0) {
+                html = '<li class="p-3 text-muted">No folders found.</li>';
+            } else {
+                data.folders.forEach(folder => {
+                    html += `
+                        <li class="folder-item px-3 py-2 border-bottom" id="folder-${folder}">
+                            <span class="folder-name" onclick="viewFolderLog('${folder}')">📁 ${folder}</span>
+                            <span class="btn-delete-folder" onclick="confirmFolderDelete(event, '${folder}')">Delete</span>
+                        </li>`;
+                });
+            }
+            list.innerHTML = html;
+        } catch (e) {
+            list.innerHTML = '<li class="p-3 text-danger">Server connection failed.</li>';
+        }
+    }
+
+    async function viewFolderLog(folderName) {
+        // Update UI selection
+        document.querySelectorAll('.folder-item').forEach(el => el.classList.remove('selected-folder'));
+        document.getElementById(`folder-${folderName}`).classList.add('selected-folder');
+
+        const logBox = document.getElementById('log-content');
+        document.getElementById('log-file-name').innerText = folderName;
+        logBox.innerText = "Loading log from folder...";
+        
+        try {
+            const res = await fetch(`http://${selectedIp}:${config.agent_port}/get-log-from-folder`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ folder_name: folderName })
+            });
+            const data = await res.json();
+            logBox.innerText = data.log;
+            logBox.scrollTop = logBox.scrollHeight;
+        } catch (e) {
+            logBox.innerText = "Error loading log.";
+        }
+    }
+
+    async function confirmFolderDelete(event, folderName) {
+        event.stopPropagation(); // Prevent triggering the log view
+        if (!confirm(`Permanently delete folder "${folderName}" and all its contents?`)) return;
+
+        try {
+            const res = await fetch(`http://${selectedIp}:${config.agent_port}/delete-folder`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ folder_name: folderName })
+            });
+            if (res.ok) {
+                fetchFolders(selectedIp); // Refresh list
+                document.getElementById('log-content').innerText = "Folder deleted.";
+            }
+        } catch (e) {
+            alert("Delete failed.");
+        }
+    }
+</script>
