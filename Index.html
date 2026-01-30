@@ -198,3 +198,75 @@
 </script>
 </body>
 </html>
+
+<div class="card shadow-sm log-card mt-4">
+    <div class="explorer-header d-flex justify-content-between">
+        <span>Live Log Viewer: <span id="log-file-name" class="text-primary">None Selected</span></span>
+        <small id="log-folder-path" class="text-muted"></small>
+    </div>
+    <div class="p-3">
+        <div id="log-content" class="log-viewer">Select a processing row to view proglogs.txt...</div>
+        <div class="mt-2 text-end">
+            <button class="btn btn-sm btn-outline-secondary" onclick="refreshSelectedLog()">Refresh Log</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let selectedFile = null;
+    let selectedIp = null;
+
+    // Modified loadData to keep selection after refresh
+    async function loadData() {
+        // ... (existing fetch logic) ...
+        // Add this inside your data.files.forEach:
+        /*
+        html += `<tr onclick="selectRow(this, '${ip}', '${f.name}')" class="${(selectedFile === f.name && selectedIp === ip) ? 'selected-row' : ''}">
+                    ...
+                </tr>`;
+        */
+    }
+
+    async function selectRow(rowElement, ip, filename) {
+        // Clear previous selection styling
+        document.querySelectorAll('tr').forEach(r => r.classList.remove('selected-row'));
+        rowElement.classList.add('selected-row');
+
+        selectedFile = filename;
+        selectedIp = ip;
+        document.getElementById('log-file-name').innerText = filename;
+        
+        fetchLog();
+    }
+
+    async function fetchLog() {
+        if (!selectedFile || !selectedIp) return;
+        const logBox = document.getElementById('log-content');
+        
+        try {
+            const res = await fetch(`http://${selectedIp}:${config.agent_port}/get-log`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ filename: selectedFile })
+            });
+            const data = await res.json();
+            
+            logBox.innerText = data.log;
+            if(data.folder) document.getElementById('log-folder-path').innerText = "Folder: " + data.folder;
+            
+            // Auto-scroll to bottom
+            logBox.scrollTop = logBox.scrollHeight;
+        } catch (e) {
+            logBox.innerText = "Error fetching log from server.";
+        }
+    }
+
+    function refreshSelectedLog() {
+        fetchLog();
+    }
+
+    // Optional: Refresh log every 5 seconds if a row is selected
+    setInterval(() => {
+        if(selectedFile) fetchLog();
+    }, 5000);
+            </script>
