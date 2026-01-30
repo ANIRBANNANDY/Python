@@ -184,5 +184,21 @@ def get_log_from_folder():
     except Exception as e:
         return jsonify({"log": f"Error reading log: {str(e)}"})
 
+@app.route('/disk-usage', methods=['GET'])
+def disk_usage():
+    stats = {}
+    for drive in ['C:', 'D:']:
+        try:
+            usage = psutil.disk_usage(drive)
+            stats[drive] = {
+                "total": round(usage.total / (1024**3), 1), # GB
+                "used": round(usage.used / (1024**3), 1),   # GB
+                "free": round(usage.free / (1024**3), 1),   # GB
+                "percent": usage.percent
+            }
+        except:
+            stats[drive] = None # Drive might not exist
+    return jsonify(stats)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config['agent_port'])
