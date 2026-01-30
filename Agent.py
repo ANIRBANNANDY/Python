@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import glob
 from collections import deque
+import shutil
 
 with open('config.json', 'r') as f:
     config = json.load(f)
@@ -153,6 +154,35 @@ def delete_from_queue():
         return jsonify({"status": "error", "message": "File not found"}), 404
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/delete-folder', methods=['POST'])
+def delete_folder():
+    folder_name = request.json.get('folder_name')
+    # Use secondary_folder from config
+    target_path = os.path.join(config['secondary_folder'], folder_name)
+    
+    try:
+        if os.path.exists(target_path) and os.path.isdir(target_path):
+            shutil.rmtree(target_path) # Deletes folder and all contents
+            return jsonify({"status": "success"})
+        return jsonify({"status": "error", "message": "Folder not found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/get-log-from-folder', methods=['POST'])
+def get_log_from_folder():
+    folder_name = request.json.get('folder_name')
+    # Path: secondary_folder / folder_name / log / db / proglogs.txt
+    log_path = os.path.join(config['secondary_folder'], folder_name, "log", "db", "proglogs.txt")
+    
+    try:
+        if os.path.exists(log_path):
+            with open(log_path, 'r') as f:
+                lines = deque(f, 50)
+                return jsonify({"log": "".join(lines), "path": log_path})
+        return jsonify({"log": "proglogs.txt not found in this folder structure."})
+    except Exception as e:
+        return jsonify({"log": f"Error reading log: {str(e)}"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config['agent_port'])
