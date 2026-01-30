@@ -425,3 +425,57 @@
         }
     }
 </script>
+
+<div class="card shadow-sm disk-card">
+    <div class="explorer-header d-flex justify-content-between align-items-center bg-light">
+        <span class="fw-bold">Disk Health: <span id="health-server-name" class="text-muted">None</span></span>
+    </div>
+    <div class="p-3" id="disk-container">
+        <div class="text-center text-muted small">Select a server in the explorer to see disk space.</div>
+    </div>
+</div>
+
+<script>
+    // Extend your existing fetchFolders function to also update Disk Health
+    const originalFetchFolders = fetchFolders;
+    fetchFolders = async function(ip) {
+        await originalFetchFolders(ip);
+        if (ip) updateDiskHealth(ip);
+    };
+
+    async function updateDiskHealth(ip) {
+        const container = document.getElementById('disk-container');
+        document.getElementById('health-server-name').innerText = ip;
+        
+        try {
+            const res = await fetch(`http://${ip}:${config.agent_port}/disk-usage`);
+            const data = await res.json();
+            
+            let html = '';
+            for (const [drive, stats] of Object.entries(data)) {
+                if (!stats) continue;
+                
+                // Color logic: Red if > 90% full
+                const barColor = stats.percent > 90 ? 'bg-danger' : 'bg-success';
+                const percentText = stats.percent > 90 ? 'text-danger-bold' : '';
+
+                html += `
+                    <div class="mb-3">
+                        <div class="disk-label mb-1">
+                            <span>Drive ${drive}</span>
+                            <span class="${percentText}">${stats.percent}% Full</span>
+                        </div>
+                        <div class="progress mb-1">
+                            <div class="progress-bar ${barColor}" role="progressbar" style="width: ${stats.percent}%"></div>
+                        </div>
+                        <div class="text-muted" style="font-size: 0.75rem;">
+                            ${stats.free} GB free of ${stats.total} GB
+                        </div>
+                    </div>`;
+            }
+            container.innerHTML = html || '<div class="text-center">No drives found.</div>';
+        } catch (e) {
+            container.innerHTML = '<div class="text-danger text-center">Failed to fetch disk stats.</div>';
+        }
+    }
+</script>
