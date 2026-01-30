@@ -129,5 +129,30 @@ def get_log():
     except Exception as e:
         return jsonify({"log": f"Error: {str(e)}"})
 
+@app.route('/get-queue', methods=['GET'])
+def get_queue():
+    """Lists files in the separate Queue Folder."""
+    queue_path = config['queue_folder']
+    files = []
+    if os.path.exists(queue_path):
+        for f in os.listdir(queue_path):
+            if os.path.isfile(os.path.join(queue_path, f)):
+                files.append({"name": f})
+    return jsonify({"files": files})
+
+@app.route('/delete-from-queue', methods=['POST'])
+def delete_from_queue():
+    """Deletes a file from the separate Queue Folder."""
+    filename = request.json.get('filename')
+    file_path = os.path.join(config['queue_folder'], filename)
+    
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return jsonify({"status": "success"})
+        return jsonify({"status": "error", "message": "File not found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config['agent_port'])
