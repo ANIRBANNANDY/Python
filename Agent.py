@@ -1,6 +1,8 @@
 import os, json, psutil, socket, time
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import glob
+from collections import deque
 
 with open('config.json', 'r') as f:
     config = json.load(f)
@@ -92,6 +94,40 @@ def list_secondary_folders():
         # List only directories, not files
         folders = [d for d in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, d))]
     return jsonify({"server": socket.gethostname(), "folders": folders})
+
+@app.route('/get-log', methods=['POST'])
+def get_log():
+    filename = request.json.get('filename') # e.g., xyz_abcd123456.zip
+    try:
+        # 1. Extract segment (assumes format xyz_SEGMENT_numbers.zip)
+        # Using abcd123 logic: split by underscore, take second part
+        parts = filename.split('_')
+        if len(parts) < 2: return jsonify({"log": "Invalid filename format"})
+        segment = parts[1][:7] # Take the 'abcd123' part
+
+        # 2. Search for folders containing that segment
+        search_path = os.path.join(config['log_search_root'], f"*{segment}*")
+        folders = [d for d in glob.glob(search_path) if os.path.isdir(d)]
+
+        if not folders:
+            return jsonify({"log": f"No folder found for segment: {segment}"})
+
+        # 3. Get latest folder
+        latest_folder = max(folders, key=os.path.getmtime)
+
+        # 4. Construct path to proglogs.txt
+        log_file = os.path.join(latest_folder, "log", "db", "proglogs.txt")
+
+        if not os.path.exists(log_file):
+            return jsonify({"log": f"Log file not found at: {log_file}"})
+
+        # 5. Read last 50 lines (or 5-10 for the box)
+        with open(log_file, 'r') as f:
+            lines = deque(f, 50) # Efficiently get last 50 lines
+            return jsonify({"log": "".join(lines), "folder": os.path.basename(latest_folder)})
+
+    except Exception as e:
+        return jsonify({"log": f"Error: {str(e)}"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config['agent_port'])
