@@ -153,3 +153,26 @@ body {
     background-color: #cfe2ff !important;
     font-weight: bold;
 }
+
+.disk-card {
+    border-top: 4px solid #20c997; /* Teal for Health */
+    margin-top: 20px;
+}
+
+.progress {
+    height: 10px;
+    background-color: #e9ecef;
+    border-radius: 5px;
+}
+
+.disk-label {
+    font-size: 0.8rem;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+}
+
+.text-danger-bold {
+    color: #dc3545;
+    font-weight: bold;
+    }
