@@ -200,5 +200,20 @@ def disk_usage():
             stats[drive] = None # Drive might not exist
     return jsonify(stats)
 
+@app.route('/get-queue', methods=['GET'])
+def get_queue():
+    """Lists files in the separate Queue Folder and returns count."""
+    queue_path = config['queue_folder']
+    files = []
+    if os.path.exists(queue_path):
+        for f in os.listdir(queue_path):
+            if os.path.isfile(os.path.join(queue_path, f)):
+                files.append({"name": f})
+    
+    return jsonify({
+        "files": files,
+        "total_count": len(files)
+    })
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config['agent_port'])
