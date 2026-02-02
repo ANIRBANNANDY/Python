@@ -1,60 +1,63 @@
-<div class="container-fluid pt-4 px-4">
-    <div class="row align-items-center mb-4">
-        <div class="col-md-6">
-            <h2 class="fw-bold mb-0">Enterprise Process Monitor</h2>
-            <p class="text-muted mb-0">User Context: <span class="badge bg-dark">{{ config.target_user }}</span></p>
+<div class="card shadow-sm queue-card mt-3">
+    <div class="explorer-header d-flex justify-content-between align-items-center bg-light">
+        <div class="d-flex align-items-center">
+            <span class="fw-bold">Queue Manager</span>
+            <span id="queue-count-badge" class="queue-badge">0</span>
         </div>
-        <div class="col-md-6 d-flex justify-content-end">
-            <div class="clock-section">
-                <div class="clock-group">
-                    <div class="clock-box clock-date">
-                        <span class="clock-label">Current Date</span>
-                        <span id="display-date">-- --- ----</span>
-                    </div>
-                    <div class="clock-box">
-                        <span class="clock-label">IST (India)</span>
-                        <span id="ist-time" class="clock-time">00:00:00</span>
-                    </div>
-                    <div class="clock-box">
-                        <span class="clock-label">CET (Europe)</span>
-                        <span id="cet-time" class="clock-time">00:00:00</span>
-                    </div>
-                </div>
-            </div>
+        <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="updateQueue()">🔄</button>
+    </div>
+    <div class="p-2">
+        <div id="queue-container" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm table-borderless small mb-0">
+                <tbody id="queue-list">
+                    </tbody>
+            </table>
         </div>
     </div>
 </div>
 
 <script>
-    // Live Clock Logic
-    function tick() {
-        const now = new Date();
+    async function updateQueue() {
+        const server1Ip = config.servers[0]; 
+        const queueList = document.getElementById('queue-list');
+        const badge = document.getElementById('queue-count-badge');
         
-        // Options for formatting
-        const timeOptions = { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit', 
-            hour12: false 
-        };
+        try {
+            const res = await fetch(`http://${server1Ip}:${config.agent_port}/get-queue`);
+            const data = await res.json();
+            
+            // Update the badge count
+            badge.innerText = data.total_count;
+            
+            // Highlight badge if queue is getting large (e.g., > 10 files)
+            if (data.total_count > 10) {
+                badge.classList.replace('bg-purple', 'bg-danger');
+            } else {
+                badge.style.backgroundColor = '#6f42c1';
+            }
 
-        const dateOptions = { 
-            day: '2-digit', 
-            month: 'short', 
-            year: 'numeric' 
-        };
-
-        // Timezone specific strings
-        const istStr = now.toLocaleTimeString('en-GB', { ...timeOptions, timeZone: 'Asia/Kolkata' });
-        const cetStr = now.toLocaleTimeString('en-GB', { ...timeOptions, timeZone: 'Europe/Paris' });
-        const dateStr = now.toLocaleDateString('en-GB', dateOptions);
-
-        document.getElementById('ist-time').innerText = istStr;
-        document.getElementById('cet-time').innerText = cetStr;
-        document.getElementById('display-date').innerText = dateStr;
+            let html = '';
+            if (data.files.length === 0) {
+                html = '<tr><td class="text-center text-muted py-3">Queue is empty</td></tr>';
+            } else {
+                data.files.forEach(file => {
+                    html += `
+                        <tr class="border-bottom">
+                            <td class="align-middle"><code>${file.name}</code></td>
+                            <td class="text-end">
+                                <button class="btn btn-link text-danger btn-sm p-0 fw-bold" 
+                                        style="text-decoration:none"
+                                        onclick="confirmQueueDelete('${file.name}')">
+                                    [ Delete ]
+                                </button>
+                            </td>
+                        </tr>`;
+                });
+            }
+            queueList.innerHTML = html;
+        } catch (e) {
+            queueList.innerHTML = '<tr><td class="text-danger text-center">Connection error</td></tr>';
+            badge.innerText = '!';
+        }
     }
-
-    // Start the clock
-    setInterval(tick, 1000);
-    tick();
 </script>
