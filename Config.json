@@ -13,4 +13,9 @@
         "10.0.0.5",
         "10.0.0.6"
     ]
+    "auth": {
+        "enabled": true,
+        "ad_groups": ["APP_Monitor_Users", "APP_Monitor_Admins"],
+        "svc_account": "DOMAIN\\SVC_User_Account"
+    }
 }
