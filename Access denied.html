@@ -1,0 +1,18 @@
+<div class="card shadow border-0" style="max-width: 500px;">
+    <div class="card-body text-center p-5">
+        <h1 class="display-1 text-danger">🔒</h1>
+        <h3 class="fw-bold">Access Restricted</h3>
+        <p class="text-muted">User <strong>{{ user }}</strong> is not authorized.</p>
+        
+        <div class="alert alert-secondary text-start small">
+            <strong>Required AD Membership:</strong>
+            <ul class="mb-0 mt-1">
+                <li>APP_Monitor_Users</li>
+                <li>APP_Monitor_Admins</li>
+            </ul>
+        </div>
+        
+        <p class="small text-muted">The backend operations are performed by the Service Account, but dashboard access requires personal authorization.</p>
+        <a href="mailto:admin@company.com" class="btn btn-outline-danger btn-sm">Request Access</a>
+    </div>
+  </div>
