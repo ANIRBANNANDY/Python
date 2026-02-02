@@ -1,70 +1,60 @@
-def is_target_proc(proc, name_filter, cmd_filter=None):
-    """Targets processes based solely on Name and Command Line content."""
-    try:
-        # 1. Check Process Name (Case Insensitive)
-        if name_filter.lower() not in proc.name().lower():
-            return False
-            
-        # 2. Check Command Line for specific string (e.g., "xyz" or filename)
-        if cmd_filter:
-            # Join command line list into a single string for searching
-            cmdline_parts = proc.cmdline() if hasattr(proc, 'cmdline') else []
-            cmdline_str = " ".join(cmdline_parts).lower()
-            if cmd_filter.lower() not in cmdline_str:
-                return False
-                
-        return True
-    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-        return False
+<div class="container-fluid pt-4 px-4">
+    <div class="row align-items-center mb-4">
+        <div class="col-md-6">
+            <h2 class="fw-bold mb-0">Enterprise Process Monitor</h2>
+            <p class="text-muted mb-0">User Context: <span class="badge bg-dark">{{ config.target_user }}</span></p>
+        </div>
+        <div class="col-md-6 d-flex justify-content-end">
+            <div class="clock-section">
+                <div class="clock-group">
+                    <div class="clock-box clock-date">
+                        <span class="clock-label">Current Date</span>
+                        <span id="display-date">-- --- ----</span>
+                    </div>
+                    <div class="clock-box">
+                        <span class="clock-label">IST (India)</span>
+                        <span id="ist-time" class="clock-time">00:00:00</span>
+                    </div>
+                    <div class="clock-box">
+                        <span class="clock-label">CET (Europe)</span>
+                        <span id="cet-time" class="clock-time">00:00:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-def kill_sequence(filename):
-    """
-    Global cleanup on the server:
-    1. Kills EVERY perl.exe that has 'xyz' in the command line.
-    2. Kills EVERY sas.exe process found.
-    3. Repeats 3 times with 5s delays.
-    4. Deletes the specific file selected.
-    """
-    for attempt in range(3):
-        found_any = False
+<script>
+    // Live Clock Logic
+    function tick() {
+        const now = new Date();
         
-        # --- PHASE 1: Kill all Perl with 'xyz' ---
-        for proc in psutil.process_iter(['name', 'cmdline']):
-            try:
-                # Check if it's perl
-                if proc.info['name'] and 'perl' in proc.info['name'].lower():
-                    cmdline_str = " ".join(proc.info['cmdline'] or []).lower()
-                    # Check if 'xyz' is in the command
-                    if 'xyz' in cmdline_str:
-                        proc.kill()
-                        found_any = True
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+        // Options for formatting
+        const timeOptions = { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit', 
+            hour12: false 
+        };
 
-        # --- PHASE 2: Kill all SAS ---
-        for proc in psutil.process_iter(['name']):
-            try:
-                if proc.info['name'] and 'sas.exe' in proc.info['name'].lower():
-                    proc.kill()
-                    found_any = True
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+        const dateOptions = { 
+            day: '2-digit', 
+            month: 'short', 
+            year: 'numeric' 
+        };
 
-        # If nothing was found to kill on the first try, we can likely stop
-        if not found_any and attempt == 0:
-            break
-            
-        # Wait 5 seconds before the next check/kill cycle
-        time.sleep(5)
+        // Timezone specific strings
+        const istStr = now.toLocaleTimeString('en-GB', { ...timeOptions, timeZone: 'Asia/Kolkata' });
+        const cetStr = now.toLocaleTimeString('en-GB', { ...timeOptions, timeZone: 'Europe/Paris' });
+        const dateStr = now.toLocaleDateString('en-GB', dateOptions);
 
-    # --- PHASE 3: Delete the specific file ---
-    path = os.path.join(config['target_folder'], filename)
-    try:
-        if os.path.exists(path):
-            os.remove(path)
-            return True
-    except Exception as e:
-        print(f"File deletion error: {e}")
-        return False
-        
-    return True
+        document.getElementById('ist-time').innerText = istStr;
+        document.getElementById('cet-time').innerText = cetStr;
+        document.getElementById('display-date').innerText = dateStr;
+    }
+
+    // Start the clock
+    setInterval(tick, 1000);
+    tick();
+</script>
