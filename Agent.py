@@ -215,5 +215,33 @@ def get_queue():
         "total_count": len(files)
     })
 
+import shutil
+
+@app.route('/check-ready', methods=['GET'])
+def check_ready():
+    """Returns true if the target processing folder is empty."""
+    path = config['target_folder']
+    if not os.path.exists(path):
+        return jsonify({"ready": True})
+    # Check if directory is empty
+    is_empty = len(os.listdir(path)) == 0
+    return jsonify({"ready": is_empty})
+
+@app.route('/receive-push', methods=['POST'])
+def receive_push():
+    """Receives a file moved from the Queue."""
+    data = request.json
+    filename = data.get('filename')
+    source_path = os.path.join(config['queue_folder'], filename)
+    dest_path = os.path.join(config['target_folder'], filename)
+    
+    try:
+        if os.path.exists(source_path):
+            shutil.move(source_path, dest_path)
+            return jsonify({"success": True, "message": f"Moved to {socket.gethostname()}"})
+        return jsonify({"success": False, "message": "Source file missing"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config['agent_port'])
