@@ -1,9 +1,102 @@
-<div class="col-md-6 d-flex align-items-center">
-    <div class="me-4">
-        <h2 class="fw-bold mb-0">Process Monitor</h2>
-        <small class="text-muted">Logged in as: <span class="text-primary fw-bold">{{ user_id }}</span></small>
+<div class="card shadow-sm queue-card mt-2">
+    <div class="explorer-header d-flex justify-content-between align-items-center bg-light">
+        <span class="fw-bold">Queue Explorer <span id="queue-count-badge" class="queue-badge">0</span></span>
+        <button class="btn btn-sm btn-link p-0" onclick="updateQueue()">🔄</button>
     </div>
-    <div class="ms-2">
-        <span class="badge bg-success">AD Verified</span>
+    <div class="p-2">
+        <div id="queue-container" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm table-borderless small mb-0">
+                <thead>
+                    <tr class="border-bottom text-muted" style="font-size: 0.7rem;">
+                        <th style="width: 50px;">PRI</th>
+                        <th>FILE NAME</th>
+                        <th class="text-end">ACTION</th>
+                    </tr>
+                </thead>
+                <tbody id="queue-list">
+                    <tr><td colspan="3" class="text-center py-3">Loading queue files...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
+
+<script>
+let queueData = []; // Local state to manage swapping
+
+async function updateQueue() {
+    const serverIp = config.servers[0]; 
+    const badge = document.getElementById('queue-count-badge');
+    
+    try {
+        const res = await fetch(`http://${serverIp}:${config.agent_port}/get-queue`);
+        const data = await res.json();
+        
+        badge.innerText = data.total_count;
+        
+        // Transform incoming files into objects with a priority property
+        // We also attach the serverIp to each file so 'Delete' always knows where to go
+        queueData = data.files.map((file, index) => ({
+            name: file.name,
+            ip: serverIp, 
+            priority: index + 1
+        }));
+
+        renderQueueTable();
+    } catch (e) {
+        document.getElementById('queue-list').innerHTML = '<tr><td colspan="3" class="text-danger text-center">Connection error</td></tr>';
+        badge.innerText = '!!!';
+    }
+}
+
+function renderQueueTable() {
+    const queueList = document.getElementById('queue-list');
+    
+    // Always sort the array by priority before rendering
+    queueData.sort((a, b) => a.priority - b.priority);
+
+    if (queueData.length === 0) {
+        queueList.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Queue is empty</td></tr>';
+        return;
+    }
+
+    let html = '';
+    queueData.forEach(file => {
+        html += `
+            <tr class="border-bottom">
+                <td>
+                    <input type="number" class="form-control form-control-sm p-0 text-center fw-bold" 
+                           style="width: 40px; height: 25px; font-size: 0.75rem;"
+                           value="${file.priority}" 
+                           min="1" max="${queueData.length}"
+                           onchange="changePriority('${file.name}', this.value)">
+                </td>
+                <td class="align-middle"><code>${file.name}</code></td>
+                <td class="text-end">
+                    <button class="btn btn-link text-danger btn-sm p-0 fw-bold" 
+                            style="text-decoration:none"
+                            onclick="confirmQueueDelete('${file.name}', '${file.ip}')">
+                        <b>Delete</b>
+                    </button>
+                </td>
+            </tr>`;
+    });
+    queueList.innerHTML = html;
+}
+
+function changePriority(fileName, newVal) {
+    const newPriority = parseInt(newVal);
+    const movingFile = queueData.find(f => f.name === fileName);
+    const oldPriority = movingFile.priority;
+
+    // Find the file currently at the target position to swap
+    const targetFile = queueData.find(f => f.priority === newPriority);
+
+    if (targetFile && targetFile.name !== fileName) {
+        targetFile.priority = oldPriority; // Previous occupant takes the old spot
+        movingFile.priority = newPriority; // New occupant takes the target spot
+    }
+
+    renderQueueTable(); // Re-draw and auto-sort
+}
+    </script>
