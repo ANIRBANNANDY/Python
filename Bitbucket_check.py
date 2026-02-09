@@ -1,56 +1,51 @@
-import git
-from packaging import version
+import os
 import re
+import requests
 
-def get_latest_release_branch(repo):
-    # Get all remote branch names
-    branches = [ref.name for ref in repo.remotes.origin.refs]
-    
-    # Filter for branches that match 'release/' or 'release-' patterns
-    # Adjust the regex if your naming convention is different
-    release_pattern = re.compile(r'origin/release[/-](\d+\.\d+\.\d+)')
-    
-    release_branches = []
-    for b in branches:
-        match = release_pattern.search(b)
-        if match:
-            v_string = match.group(1)
-            release_branches.append((v_string, b))
+# --- Configuration ---
+BITBUCKET_API_URL = "https://api.bitbucket.org/2.0/repositories/{workspace}/{repo}/refs/tags"
+USERNAME = "your_username"
+APP_PASSWORD = "your_app_password"  # Use Bitbucket App Passwords, not your real password
+PROPERTIES_FILE_PATH = "service.properties"
+VERSION_KEY = "framework.version"
 
-    if not release_branches:
-        return None
-
-    # Sort by actual version number, not alphabetical string order
-    latest = max(release_branches, key=lambda x: version.parse(x[0]))
-    return latest[1] # Returns the full branch name, e.g., 'origin/release-1.1.1'
-
-def check_sync_with_latest_release(repo_path):
+def get_latest_bitbucket_tag():
+    """Fetches the most recent tag name from the Core Framework repo."""
     try:
-        repo = git.Repo(repo_path)
-        print("Fetching latest from remote...")
-        repo.remotes.origin.fetch()
-
-        latest_release = get_latest_release_branch(repo)
-        
-        if not latest_release:
-            print("No release branches found.")
-            return
-
-        print(f"Found latest release branch: {latest_release}")
-        
-        # Compare master against the latest release branch
-        # We use 'origin/master' to ensure we are looking at the server state
-        behind = list(repo.iter_commits(f'origin/master..{latest_release}'))
-        
-        if not behind:
-            print(f"✅ Master is in sync with {latest_release}.")
-        else:
-            print(f"⚠️ Master is BEHIND {latest_release} by {len(behind)} commits.")
-            for commit in behind[:3]:
-                print(f"   - {commit.hexsha[:7]}: {commit.summary}")
-
+        response = requests.get(BITBUCKET_API_URL, auth=(USERNAME, APP_PASSWORD))
+        response.raise_for_status()
+        data = response.json()
+        # Bitbucket returns tags sorted by date; first one is usually the latest
+        return data['values'][0]['name']
     except Exception as e:
-        print(f"Error: {e}")
+        return f"Error fetching tag: {e}"
 
-# Run it
-check_sync_with_latest_release('./your-repo-folder')
+def get_local_version():
+    """Reads the version currently set in the properties file."""
+    if not os.path.exists(PROPERTIES_FILE_PATH):
+        return None
+    
+    with open(PROPERTIES_FILE_PATH, 'r') as f:
+        for line in f:
+            if line.startswith(VERSION_KEY):
+                # Splits 'key=value' and takes the value
+                return line.split('=')[1].strip()
+    return None
+
+def compare_versions():
+    latest_tag = get_latest_bitbucket_tag()
+    current_version = get_local_version()
+
+    print(f"--- Version Check ---")
+    print(f"Latest Framework Tag: {latest_tag}")
+    print(f"Current Service Property: {current_version}")
+    print("-" * 21)
+
+    if latest_tag == current_version:
+        print("✅ SUCCESS: Versions match. Your service is up to date.")
+    else:
+        print("❌ WARNING: Version mismatch detected!")
+        print(f"Please update {PROPERTIES_FILE_PATH} to use {latest_tag}.")
+
+if __name__ == "__main__":
+    compare_versions()
