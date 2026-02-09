@@ -1,0 +1,164 @@
+{
+  "hub_port": 8080,
+  "agent_port": 5000,
+  "ad_groups": ["GG_App_Admins", "GG_App_Users"],
+  "servers": [
+    "xyzd4.abc.com", "xyzd5.abc.com", "xyzd6.abc.com", 
+    "xyzd7.abc.com", "xyzd8.abc.com", "xyzd9.abc.com"
+  ],
+  "smtp_settings": {
+    "server": "smtp.abc.com",
+    "port": 587,
+    "sender": "process-monitor-noreply@abc.com"
+  }
+}
+
+import sqlite3
+import hashlib
+import json
+import subprocess
+import sys
+import os
+from datetime import timedelta
+from flask import Flask, render_template, request, session, redirect, url_for, flash
+
+app = Flask(__name__)
+app.secret_key = 'super_secret_key_change_me' # Security key for sessions
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=3650) # 10-year login
+
+# --- Helpers ---
+def load_config():
+    with open('config.json', 'r') as f:
+        return json.load(f)
+
+def get_db_connection():
+    conn = sqlite3.connect('auth_store.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    db = get_db_connection()
+    db.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, pin_hash TEXT, email TEXT)')
+    db.commit()
+    db.close()
+
+def is_sequential(pin):
+    if not pin.isdigit() or len(pin) < 2: return False
+    digits = [int(d) for d in pin]
+    is_asc = all(digits[i] + 1 == digits[i+1] for i in range(len(digits)-1))
+    is_desc = all(digits[i] - 1 == digits[i+1] for i in range(len(digits)-1))
+    return is_asc or is_desc
+
+def get_ad_user_info(username):
+    groups = load_config()['ad_groups']
+    groups_str = "'" + "','".join(groups) + "'"
+    ps_cmd = f"""
+    $auth = $false
+    foreach ($g in @({groups_str})) {{
+        if (Get-ADGroupMember -Identity $g | Where-Object {{$_.SamAccountName -eq '{username}'}}) {{
+            $auth = $true; break
+        }}
+    }}
+    if ($auth) {{ Get-ADUser -Identity '{username}' -Properties EmailAddress | Select-Object -ExpandProperty EmailAddress }}
+    """
+    try:
+        res = subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, text=True)
+        return res.stdout.strip() if res.stdout.strip() else None
+    except: return None
+
+# --- Routes ---
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = request.form.get('username').strip().lower()
+        pin = request.form.get('pin').strip()
+
+        if not pin.isdigit() or is_sequential(pin):
+            flash("PIN must be digits and non-sequential (no 1234).")
+            return render_template('login.html')
+
+        db = get_db_connection()
+        record = db.execute('SELECT * FROM users WHERE username = ?', (user,)).fetchone()
+
+        if not record: # First time login
+            email = get_ad_user_info(user)
+            if email:
+                db.execute('INSERT INTO users VALUES (?, ?, ?)', (user, hashlib.sha256(pin.encode()).hexdigest(), email))
+                db.commit()
+                session.permanent = True
+                session['user_id'] = user
+                return redirect(url_for('index'))
+            flash("Access Denied: Not in AD Groups.")
+        else: # Existing user
+            if record['pin_hash'] == hashlib.sha256(pin.encode()).hexdigest():
+                session.permanent = True
+                session['user_id'] = user
+                return redirect(url_for('index'))
+            flash("Invalid PIN.")
+        db.close()
+    return render_template('login.html')
+
+@app.route('/')
+def index():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    host_display = sys.argv[1] if len(sys.argv) > 1 else "Hub-Server"
+    return render_template('index.html', config=load_config(), host_display=host_display)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+if __name__ == '__main__':
+    init_db()
+    app.run(host='0.0.0.0', port=8080)
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login | Process Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f8f9fa; display: flex; align-items: center; height: 100vh; }
+        .login-card { width: 100%; max-width: 400px; margin: auto; }
+    </style>
+</head>
+<body>
+    <div class="login-card p-3">
+        <div class="card shadow">
+            <div class="card-header bg-dark text-white text-center"><h5>Secure Access</h5></div>
+            <div class="card-body">
+                {% with messages = get_flashed_messages() %}
+                  {% if messages %}<div class="alert alert-danger py-2 small">{{ messages[0] }}</div>{% endif %}
+                {% endwith %}
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Username (AD ID)</label>
+                        <input type="text" name="username" class="form-control" required autocomplete="off">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">PIN</label>
+                        <input type="password" name="pin" class="form-control" placeholder="Digits only" required>
+                        <div class="form-text small">First time? Enter any PIN to set it.</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3 mb-4 shadow">
+    <a class="navbar-brand fw-bold" href="#">Monitor: {{ host_display }}</a>
+    
+    <div class="ms-auto d-flex align-items-center">
+        <span class="text-white-50 me-3 small">
+            Logged in as: <span class="text-white fw-bold">{{ session['user_id'] }}</span>
+        </span>
+        <a href="/logout" class="btn btn-sm btn-outline-danger">Logout</a>
+    </div>
+</nav>
+
+
