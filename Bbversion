@@ -1,0 +1,68 @@
+import requests
+
+# --- Configuration ---
+# Example: https://bitbucket.yourcompany.com
+BASE_URL = "https://your-bitbucket-on-prem.com" 
+# Generate a Personal Access Token in Bitbucket (Settings > Personal Access Tokens)
+TOKEN = "your_personal_access_token"
+
+# Repo 1 Details (Core Framework)
+CORE_PROJECT = "FRAME"
+CORE_REPO = "core-framework"
+
+# Repo 2 Details (Service)
+SERVICE_PROJECT = "PROD"
+SERVICE_REPO = "my-service"
+PROPERTIES_FILE = "gradle.properties"  # Relative path in repo
+VERSION_KEY = "plugin.version"
+
+HEADERS = {
+    "Authorization": f"Bearer {TOKEN}",
+    "Content-Type": "application/json"
+}
+
+def get_latest_tag_on_prem():
+    """Fetches the latest tag from a Bitbucket Server/Data Center repo."""
+    url = f"{BASE_URL}/rest/api/1.0/projects/{CORE_PROJECT}/repos/{CORE_REPO}/tags"
+    # Bitbucket Server doesn't always sort by date in the API, 
+    # so we fetch and sort manually by the target's creation date or name.
+    params = {"orderBy": "MODIFICATION", "limit": 1}
+    response = requests.get(url, headers=HEADERS, params=params)
+    response.raise_for_status()
+    
+    tags = response.json().get('values', [])
+    return tags[0]['displayId'] if tags else None
+
+def get_file_content_on_prem():
+    """Fetches the raw content of a file from a Bitbucket Server repo."""
+    url = f"{BASE_URL}/rest/api/1.0/projects/{SERVICE_PROJECT}/repos/{SERVICE_REPO}/raw/{PROPERTIES_FILE}"
+    response = requests.get(url, headers=HEADERS)
+    
+    if response.status_code == 200:
+        lines = response.text.splitlines()
+        for line in lines:
+            if line.startswith(VERSION_KEY):
+                return line.split('=')[1].strip()
+    return None
+
+def run_comparison():
+    print(f"🔍 Connecting to {BASE_URL}...")
+    
+    latest_tag = get_latest_tag_on_prem()
+    service_version = get_file_content_on_prem()
+
+    print("\n" + "="*40)
+    print(f"{'Source':<15} | {'Version':<20}")
+    print("-" * 40)
+    print(f"{'Core Tag':<15} | {latest_tag}")
+    print(f"{'Service Prop':<15} | {service_version}")
+    print("="*40 + "\n")
+
+    if latest_tag == service_version:
+        print("✅ Status: Up to date.")
+    else:
+        print("❌ Status: MISMATCH!")
+        print(f"👉 Please update {VERSION_KEY} to {latest_tag} in the {SERVICE_REPO} repository.")
+
+if __name__ == "__main__":
+    run_comparison()
