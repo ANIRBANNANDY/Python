@@ -23,10 +23,10 @@ from datetime import timedelta
 from flask import Flask, render_template, request, session, redirect, url_for, flash
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_change_me' # Security key for sessions
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=3650) # 10-year login
+app.secret_key = 'super_secret_key_change_me' 
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=3650) 
 
-# --- Helpers ---
+# --- Database & Config Helpers ---
 def load_config():
     with open('config.json', 'r') as f:
         return json.load(f)
@@ -42,13 +42,20 @@ def init_db():
     db.commit()
     db.close()
 
-def is_sequential(pin):
-    if not pin.isdigit() or len(pin) < 2: return False
+# --- Security: 6-Digit Non-Sequential Check ---
+def is_valid_pin_strict(pin):
+    if not pin.isdigit() or len(pin) != 6:
+        return False, "PIN must be exactly 6 digits."
+    
     digits = [int(d) for d in pin]
     is_asc = all(digits[i] + 1 == digits[i+1] for i in range(len(digits)-1))
     is_desc = all(digits[i] - 1 == digits[i+1] for i in range(len(digits)-1))
-    return is_asc or is_desc
+    
+    if is_asc or is_desc:
+        return False, "Sequential PINs (e.g. 123456) are not allowed."
+    return True, ""
 
+# --- PowerShell AD Authorization ---
 def get_ad_user_info(username):
     groups = load_config()['ad_groups']
     groups_str = "'" + "','".join(groups) + "'"
@@ -73,24 +80,29 @@ def login():
         user = request.form.get('username').strip().lower()
         pin = request.form.get('pin').strip()
 
-        if not pin.isdigit() or is_sequential(pin):
-            flash("PIN must be digits and non-sequential (no 1234).")
+        # 1. Check PIN format (Server-side lock)
+        is_ok, err = is_valid_pin_strict(pin)
+        if not is_ok:
+            flash(err)
             return render_template('login.html')
 
         db = get_db_connection()
         record = db.execute('SELECT * FROM users WHERE username = ?', (user,)).fetchone()
+        hashed_pin = hashlib.sha256(pin.encode()).hexdigest()
 
-        if not record: # First time login
+        if not record: 
+            # 2. First Time: Check AD Group Membership via PowerShell
             email = get_ad_user_info(user)
             if email:
-                db.execute('INSERT INTO users VALUES (?, ?, ?)', (user, hashlib.sha256(pin.encode()).hexdigest(), email))
+                db.execute('INSERT INTO users VALUES (?, ?, ?)', (user, hashed_pin, email))
                 db.commit()
                 session.permanent = True
                 session['user_id'] = user
                 return redirect(url_for('index'))
-            flash("Access Denied: Not in AD Groups.")
-        else: # Existing user
-            if record['pin_hash'] == hashlib.sha256(pin.encode()).hexdigest():
+            flash("Access Denied: User not found in authorized AD Groups.")
+        else: 
+            # 3. Existing User: Verify stored PIN
+            if record['pin_hash'] == hashed_pin:
                 session.permanent = True
                 session['user_id'] = user
                 return redirect(url_for('index'))
@@ -117,34 +129,55 @@ if __name__ == '__main__':
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Login | Process Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process Monitor | Login</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f8f9fa; display: flex; align-items: center; height: 100vh; }
-        .login-card { width: 100%; max-width: 400px; margin: auto; }
+        body { background: #f0f2f5; display: flex; align-items: center; height: 100vh; font-family: sans-serif; }
+        .login-card { width: 100%; max-width: 420px; margin: auto; border: none; border-radius: 12px; }
+        .pin-input { 
+            letter-spacing: 0.8rem; 
+            font-size: 1.5rem; 
+            text-align: center; 
+            font-weight: bold; 
+        }
     </style>
 </head>
 <body>
-    <div class="login-card p-3">
-        <div class="card shadow">
-            <div class="card-header bg-dark text-white text-center"><h5>Secure Access</h5></div>
-            <div class="card-body">
-                {% with messages = get_flashed_messages() %}
-                  {% if messages %}<div class="alert alert-danger py-2 small">{{ messages[0] }}</div>{% endif %}
-                {% endwith %}
-                <form method="POST">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Username (AD ID)</label>
-                        <input type="text" name="username" class="form-control" required autocomplete="off">
+    <div class="login-card shadow-lg card">
+        <div class="card-header bg-primary text-white text-center py-3">
+            <h5 class="mb-0">Process Monitor Access</h5>
+        </div>
+        <div class="card-body p-4">
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                <div class="alert alert-danger py-2 small text-center">{{ messages[0] }}</div>
+              {% endif %}
+            {% endwith %}
+
+            <form method="POST">
+                <div class="mb-4">
+                    <label class="form-label small fw-bold text-uppercase">Username (AD ID)</label>
+                    <input type="text" name="username" class="form-control form-control-lg" 
+                           placeholder="e.g. john_doe" required autocomplete="off">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-bold text-uppercase">6-Digit PIN</label>
+                    <input type="password" name="pin" class="form-control form-control-lg pin-input" 
+                           placeholder="******" required 
+                           inputmode="numeric" pattern="[0-9]{6}" 
+                           minlength="6" maxlength="6">
+                    <div class="form-text text-center mt-2 small">
+                        <strong>New Users:</strong> Enter any 6 digits to set your PIN.
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">PIN</label>
-                        <input type="password" name="pin" class="form-control" placeholder="Digits only" required>
-                        <div class="form-text small">First time? Enter any PIN to set it.</div>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Login</button>
-                </form>
-            </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 btn-lg shadow-sm">Enter Dashboard</button>
+            </form>
+        </div>
+        <div class="card-footer bg-light text-center py-3">
+            <a href="/forgot-pin" class="text-decoration-none small text-muted">Forgot your PIN?</a>
         </div>
     </div>
 </body>
@@ -161,4 +194,34 @@ if __name__ == '__main__':
     </div>
 </nav>
 
+<div class="card shadow login-card mx-auto mt-5" style="max-width: 400px;">
+    <div class="card-header bg-warning text-dark text-center"><h5>Reset PIN</h5></div>
+    <div class="card-body">
+        <p class="small text-muted">Enter your User ID. If authorized, we will send a 6-digit token to your AD-linked email.</p>
+        <form method="POST">
+            <input type="text" name="username" class="form-control mb-3" placeholder="Username (AD ID)" required>
+            <button type="submit" class="btn btn-warning w-100">Send Reset Token</button>
+        </form>
+        <div class="text-center mt-3"><a href="/login" class="small">Back to Login</a></div>
+    </div>
+</div>
+
+
+<div class="card shadow login-card mx-auto mt-5" style="max-width: 400px;">
+    <div class="card-header bg-success text-white text-center"><h5>Enter Token</h5></div>
+    <div class="card-body">
+        <form action="/reset-confirm" method="POST">
+            <input type="hidden" name="username" value="{{ username }}">
+            <div class="mb-3">
+                <label class="small fw-bold">6-Digit Token</label>
+                <input type="text" name="token" class="form-control" placeholder="Check your email" required>
+            </div>
+            <div class="mb-3">
+                <label class="small fw-bold">New PIN</label>
+                <input type="password" name="new_pin" class="form-control" placeholder="Digits only" required>
+            </div>
+            <button type="submit" class="btn btn-success w-100">Update PIN</button>
+        </form>
+    </div>
+</div>
 
