@@ -1,51 +1,60 @@
-import os
-import re
 import requests
+import base64
 
 # --- Configuration ---
-BITBUCKET_API_URL = "https://api.bitbucket.org/2.0/repositories/{workspace}/{repo}/refs/tags"
 USERNAME = "your_username"
-APP_PASSWORD = "your_app_password"  # Use Bitbucket App Passwords, not your real password
-PROPERTIES_FILE_PATH = "service.properties"
-VERSION_KEY = "framework.version"
+APP_PASSWORD = "your_app_password" 
+WORKSPACE = "your_workspace_name"
 
-def get_latest_bitbucket_tag():
-    """Fetches the most recent tag name from the Core Framework repo."""
-    try:
-        response = requests.get(BITBUCKET_API_URL, auth=(USERNAME, APP_PASSWORD))
-        response.raise_for_status()
-        data = response.json()
-        # Bitbucket returns tags sorted by date; first one is usually the latest
-        return data['values'][0]['name']
-    except Exception as e:
-        return f"Error fetching tag: {e}"
+# Repo 1: The Core Framework (to get the latest tag)
+CORE_REPO = "core-framework-repo"
 
-def get_local_version():
-    """Reads the version currently set in the properties file."""
-    if not os.path.exists(PROPERTIES_FILE_PATH):
-        return None
+# Repo 2: The Service (to check the properties file)
+SERVICE_REPO = "service-repository"
+FILE_PATH = "gradle.properties"  # Path to the file within the repo
+VERSION_KEY = "plugin.version"
+
+AUTH = (USERNAME, APP_PASSWORD)
+
+def get_latest_framework_tag():
+    """Fetches the most recent tag name from the Core Framework."""
+    url = f"https://api.bitbucket.org/2.0/repositories/{WORKSPACE}/{CORE_REPO}/refs/tags?sort=-target.date"
+    response = requests.get(url, auth=AUTH)
+    response.raise_for_status()
+    tags = response.json().get('values', [])
+    return tags[0]['name'] if tags else None
+
+def get_service_property_version():
+    """Fetches the content of the properties file from the Service Repo API."""
+    url = f"https://api.bitbucket.org/2.0/repositories/{WORKSPACE}/{SERVICE_REPO}/src/master/{FILE_PATH}"
+    response = requests.get(url, auth=AUTH)
     
-    with open(PROPERTIES_FILE_PATH, 'r') as f:
-        for line in f:
+    if response.status_code == 200:
+        # Parse the file content line by line
+        lines = response.text.splitlines()
+        for line in lines:
             if line.startswith(VERSION_KEY):
-                # Splits 'key=value' and takes the value
                 return line.split('=')[1].strip()
     return None
 
-def compare_versions():
-    latest_tag = get_latest_bitbucket_tag()
-    current_version = get_local_version()
+def run_check():
+    print(f"🔍 Fetching versions from Bitbucket...")
+    
+    latest_tag = get_latest_framework_tag()
+    current_in_service = get_service_property_version()
 
-    print(f"--- Version Check ---")
-    print(f"Latest Framework Tag: {latest_tag}")
-    print(f"Current Service Property: {current_version}")
-    print("-" * 21)
+    print("\n" + "="*30)
+    print(f"Framework Latest Tag:  {latest_tag}")
+    print(f"Service Current Prop:  {current_in_service}")
+    print("="*30)
 
-    if latest_tag == current_version:
-        print("✅ SUCCESS: Versions match. Your service is up to date.")
+    if not latest_tag or not current_in_service:
+        print("❌ Error: Could not retrieve one or both versions.")
+    elif latest_tag == current_in_service:
+        print("✅ MATCH: The service is using the latest framework version.")
     else:
-        print("❌ WARNING: Version mismatch detected!")
-        print(f"Please update {PROPERTIES_FILE_PATH} to use {latest_tag}.")
+        print("⚠️  MISMATCH: The service is outdated!")
+        print(f"Action: Update '{VERSION_KEY}' to '{latest_tag}' in {SERVICE_REPO}.")
 
 if __name__ == "__main__":
-    compare_versions()
+    run_check()
