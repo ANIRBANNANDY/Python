@@ -1,227 +1,144 @@
 {
   "hub_port": 8080,
-  "agent_port": 5000,
+  "auth_api_url": "http://your-internal-api.com/whoami",
   "ad_groups": ["GG_App_Admins", "GG_App_Users"],
-  "servers": [
-    "xyzd4.abc.com", "xyzd5.abc.com", "xyzd6.abc.com", 
-    "xyzd7.abc.com", "xyzd8.abc.com", "xyzd9.abc.com"
-  ],
-  "smtp_settings": {
-    "server": "smtp.abc.com",
-    "port": 587,
-    "sender": "process-monitor-noreply@abc.com"
-  }
+  "servers": ["xyzd4.abc.com", "xyzd5.abc.com", "xyzd6.abc.com"]
 }
 
-import sqlite3
-import hashlib
 import json
 import subprocess
 import sys
-import os
-from datetime import timedelta
-from flask import Flask, render_template, request, session, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_change_me' 
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=3650) 
 
-# --- Database & Config Helpers ---
 def load_config():
     with open('config.json', 'r') as f:
         return json.load(f)
 
-def get_db_connection():
-    conn = sqlite3.connect('auth_store.db')
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    db = get_db_connection()
-    db.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, pin_hash TEXT, email TEXT)')
-    db.commit()
-    db.close()
-
-# --- Security: 6-Digit Non-Sequential Check ---
-def is_valid_pin_strict(pin):
-    if not pin.isdigit() or len(pin) != 6:
-        return False, "PIN must be exactly 6 digits."
-    
-    digits = [int(d) for d in pin]
-    is_asc = all(digits[i] + 1 == digits[i+1] for i in range(len(digits)-1))
-    is_desc = all(digits[i] - 1 == digits[i+1] for i in range(len(digits)-1))
-    
-    if is_asc or is_desc:
-        return False, "Sequential PINs (e.g. 123456) are not allowed."
-    return True, ""
-
-# --- PowerShell AD Authorization ---
-def get_ad_user_info(username):
-    groups = load_config()['ad_groups']
+def check_ad_access_by_email(email):
+    config = load_config()
+    groups = config['ad_groups']
     groups_str = "'" + "','".join(groups) + "'"
+    
+    # PowerShell: Find user by email and check if they are in the groups
     ps_cmd = f"""
     $auth = $false
-    foreach ($g in @({groups_str})) {{
-        if (Get-ADGroupMember -Identity $g | Where-Object {{$_.SamAccountName -eq '{username}'}}) {{
-            $auth = $true; break
+    $user = Get-ADUser -Filter "EmailAddress -eq '{email}'" -Properties memberOf
+    if ($user) {{
+        foreach ($g in @({groups_str})) {{
+            if ($user.memberOf -like "*$g*") {{
+                $auth = $true; break
+            }}
         }}
     }}
-    if ($auth) {{ Get-ADUser -Identity '{username}' -Properties EmailAddress | Select-Object -ExpandProperty EmailAddress }}
+    if ($auth) {{ "Authorized" }} else {{ "Denied" }}
     """
     try:
         res = subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, text=True)
-        return res.stdout.strip() if res.stdout.strip() else None
-    except: return None
-
-# --- Routes ---
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        user = request.form.get('username').strip().lower()
-        pin = request.form.get('pin').strip()
-
-        # 1. Check PIN format (Server-side lock)
-        is_ok, err = is_valid_pin_strict(pin)
-        if not is_ok:
-            flash(err)
-            return render_template('login.html')
-
-        db = get_db_connection()
-        record = db.execute('SELECT * FROM users WHERE username = ?', (user,)).fetchone()
-        hashed_pin = hashlib.sha256(pin.encode()).hexdigest()
-
-        if not record: 
-            # 2. First Time: Check AD Group Membership via PowerShell
-            email = get_ad_user_info(user)
-            if email:
-                db.execute('INSERT INTO users VALUES (?, ?, ?)', (user, hashed_pin, email))
-                db.commit()
-                session.permanent = True
-                session['user_id'] = user
-                return redirect(url_for('index'))
-            flash("Access Denied: User not found in authorized AD Groups.")
-        else: 
-            # 3. Existing User: Verify stored PIN
-            if record['pin_hash'] == hashed_pin:
-                session.permanent = True
-                session['user_id'] = user
-                return redirect(url_for('index'))
-            flash("Invalid PIN.")
-        db.close()
-    return render_template('login.html')
+        return "Authorized" in res.stdout
+    except Exception as e:
+        print(f"PS Error: {e}")
+        return False
 
 @app.route('/')
 def index():
-    if 'user_id' not in session: return redirect(url_for('login'))
+    # Pass the API URL from config to the frontend template
+    config = load_config()
     host_display = sys.argv[1] if len(sys.argv) > 1 else "Hub-Server"
-    return render_template('index.html', config=load_config(), host_display=host_display)
+    return render_template('index.html', 
+                           auth_url=config['auth_api_url'], 
+                           host_display=host_display)
 
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
+@app.route('/verify-identity', methods=['POST'])
+def verify_identity():
+    data = request.json
+    email = data.get('email')
+    
+    if not email:
+        return jsonify({"success": False, "message": "No identity provided"}), 400
+
+    if check_ad_access_by_email(email):
+        return jsonify({"success": True, "user": email})
+    else:
+        return jsonify({"success": False, "message": "User not in authorized AD group"}), 403
 
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=8080)
+
+
+
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Process Monitor | Login</title>
+    <title>Process Monitor Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f0f2f5; display: flex; align-items: center; height: 100vh; font-family: sans-serif; }
-        .login-card { width: 100%; max-width: 420px; margin: auto; border: none; border-radius: 12px; }
-        .pin-input { 
-            letter-spacing: 0.8rem; 
-            font-size: 1.5rem; 
-            text-align: center; 
-            font-weight: bold; 
-        }
+        #mainContent { display: none; } /* Hidden until authorized */
+        #loader { display: flex; justify-content: center; align-items: center; height: 100vh; }
     </style>
 </head>
 <body>
-    <div class="login-card shadow-lg card">
-        <div class="card-header bg-primary text-white text-center py-3">
-            <h5 class="mb-0">Process Monitor Access</h5>
-        </div>
-        <div class="card-body p-4">
-            {% with messages = get_flashed_messages() %}
-              {% if messages %}
-                <div class="alert alert-danger py-2 small text-center">{{ messages[0] }}</div>
-              {% endif %}
-            {% endwith %}
 
-            <form method="POST">
-                <div class="mb-4">
-                    <label class="form-label small fw-bold text-uppercase">Username (AD ID)</label>
-                    <input type="text" name="username" class="form-control form-control-lg" 
-                           placeholder="e.g. john_doe" required autocomplete="off">
-                </div>
+    <div id="loader">
+        <div class="spinner-border text-primary" role="status"></div>
+        <span class="ms-3">Verifying Identity...</span>
+    </div>
 
-                <div class="mb-4">
-                    <label class="form-label small fw-bold text-uppercase">6-Digit PIN</label>
-                    <input type="password" name="pin" class="form-control form-control-lg pin-input" 
-                           placeholder="******" required 
-                           inputmode="numeric" pattern="[0-9]{6}" 
-                           minlength="6" maxlength="6">
-                    <div class="form-text text-center mt-2 small">
-                        <strong>New Users:</strong> Enter any 6 digits to set your PIN.
-                    </div>
-                </div>
+    <div id="mainContent">
+        <nav class="navbar navbar-dark bg-dark px-3 mb-4 shadow">
+            <span class="navbar-brand fw-bold">Monitor: {{ host_display }}</span>
+            <div class="ms-auto text-white">
+                <small class="text-white-50">User:</small> 
+                <strong id="userEmailDisplay"></strong>
+            </div>
+        </nav>
 
-                <button type="submit" class="btn btn-primary w-100 btn-lg shadow-sm">Enter Dashboard</button>
-            </form>
-        </div>
-        <div class="card-footer bg-light text-center py-3">
-            <a href="/forgot-pin" class="text-decoration-none small text-muted">Forgot your PIN?</a>
+        <div class="container">
+            <h3>Authorized Dashboard</h3>
+            <p>Welcome to the process monitor.</p>
         </div>
     </div>
+
+    <script>
+        async function runAuth() {
+            const authApiUrl = "{{ auth_url }}"; // Loaded from hub.py -> config.json
+            
+            try {
+                // 1. Get identity from client-side accessible API
+                const idResponse = await fetch(authApiUrl);
+                const identity = await idResponse.json();
+                const email = identity.email; // Adjust key if your API uses 'mail' or 'UserEmail'
+
+                // 2. Verify against Hub's AD check
+                const verifyResponse = await fetch('/verify-identity', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email: email })
+                });
+
+                const result = await verifyResponse.json();
+
+                if (result.success) {
+                    document.getElementById('userEmailDisplay').innerText = result.user;
+                    document.getElementById('loader').style.display = 'none';
+                    document.getElementById('mainContent').style.display = 'block';
+                } else {
+                    showError("Access Denied: " + result.message);
+                }
+            } catch (err) {
+                showError("Authentication Service Unreachable.");
+                console.error(err);
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('loader').innerHTML = `<h4 class="text-danger">${msg}</h4>`;
+        }
+
+        window.onload = runAuth;
+    </script>
 </body>
 </html>
-
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3 mb-4 shadow">
-    <a class="navbar-brand fw-bold" href="#">Monitor: {{ host_display }}</a>
-    
-    <div class="ms-auto d-flex align-items-center">
-        <span class="text-white-50 me-3 small">
-            Logged in as: <span class="text-white fw-bold">{{ session['user_id'] }}</span>
-        </span>
-        <a href="/logout" class="btn btn-sm btn-outline-danger">Logout</a>
-    </div>
-</nav>
-
-<div class="card shadow login-card mx-auto mt-5" style="max-width: 400px;">
-    <div class="card-header bg-warning text-dark text-center"><h5>Reset PIN</h5></div>
-    <div class="card-body">
-        <p class="small text-muted">Enter your User ID. If authorized, we will send a 6-digit token to your AD-linked email.</p>
-        <form method="POST">
-            <input type="text" name="username" class="form-control mb-3" placeholder="Username (AD ID)" required>
-            <button type="submit" class="btn btn-warning w-100">Send Reset Token</button>
-        </form>
-        <div class="text-center mt-3"><a href="/login" class="small">Back to Login</a></div>
-    </div>
-</div>
-
-
-<div class="card shadow login-card mx-auto mt-5" style="max-width: 400px;">
-    <div class="card-header bg-success text-white text-center"><h5>Enter Token</h5></div>
-    <div class="card-body">
-        <form action="/reset-confirm" method="POST">
-            <input type="hidden" name="username" value="{{ username }}">
-            <div class="mb-3">
-                <label class="small fw-bold">6-Digit Token</label>
-                <input type="text" name="token" class="form-control" placeholder="Check your email" required>
-            </div>
-            <div class="mb-3">
-                <label class="small fw-bold">New PIN</label>
-                <input type="password" name="new_pin" class="form-control" placeholder="Digits only" required>
-            </div>
-            <button type="submit" class="btn btn-success w-100">Update PIN</button>
-        </form>
-    </div>
-</div>
-
