@@ -1,30 +1,35 @@
 {
   "hub_port": 8080,
-  "cidp_settings": {
-    "client_id": "YOUR_SPA_CLIENT_ID",
-    "auth_url": "https://cidp.yourcompany.com/adfs/oauth2/authorize",
-    "token_url": "https://cidp.yourcompany.com/adfs/oauth2/token",
-    "redirect_uri": "http://your-hub-url:8080/callback"
+  "cidp": {
+    "client_id": "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "metadata_url": "https://cidp.example.com/.well-known/openid-configuration",
+    "auth_endpoint": "https://cidp.example.com/adfs/oauth2/authorize",
+    "token_endpoint": "https://cidp.example.com/adfs/oauth2/token",
+    "redirect_uri": "http://yourserver:8080/callback"
   },
   "ad_groups": ["GG_App_Admins", "GG_App_Users"],
   "servers": ["xyzd4.abc.com", "xyzd5.abc.com"]
 }
 
+
 import json
 import subprocess
+import requests
 import sys
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, redirect, session, url_for
 
 app = Flask(__name__)
+app.secret_key = 'generate-a-very-long-random-string-here'
 
 def load_config():
     with open('config.json', 'r') as f:
         return json.load(f)
 
-def check_ad_access_by_email(email):
+def check_ad_group(email):
     config = load_config()
     groups_str = "'" + "','".join(config['ad_groups']) + "'"
-    
+    # PowerShell checks if the email exists in AD and belongs to the groups
     ps_cmd = f"""
     $user = Get-ADUser -Filter "EmailAddress -eq '{email}'" -Properties memberOf
     if ($user) {{
@@ -42,22 +47,58 @@ def check_ad_access_by_email(email):
 
 @app.route('/')
 def index():
-    return render_template('index.html', config=load_config())
+    if 'user_email' not in session:
+        return redirect(url_for('login'))
+    return render_template('index.html', user=session['user_email'])
 
-@app.route('/verify-token', methods=['POST'])
-def verify_token():
-    # In a production SPA, you would validate the JWT token signature here.
-    # For now, we extract the email passed from the authenticated SPA.
-    data = request.json
-    email = data.get('email')
+@app.route('/login')
+def login():
+    config = load_config()['cidp']
+    # Redirect user to CIDP Login
+    params = {
+        "client_id": config['client_id'],
+        "response_type": "code",
+        "scope": "openid email profile",
+        "redirect_uri": config['redirect_uri']
+    }
+    auth_url = f"{config['auth_endpoint']}?{'&'.join([f'{k}={v}' for k, v in params.items()])}"
+    return redirect(auth_url)
+
+@app.route('/callback')
+def callback():
+    config = load_config()['cidp']
+    code = request.args.get('code')
     
-    if email and check_ad_access_by_email(email):
-        return jsonify({"success": True, "user": email})
-    return jsonify({"success": False, "message": "AD Authorization Failed"}), 403
+    # 1. Exchange Code for Token using Client Secret
+    token_data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": config['redirect_uri'],
+        "client_id": config['client_id'],
+        "client_secret": config['client_secret']
+    }
+    
+    token_res = requests.post(config['token_endpoint'], data=token_data).json()
+    
+    # 2. Extract email (usually from ID Token or UserInfo endpoint)
+    # This part depends on your CIDP response structure; often it's a JWT.
+    # For many CIDPs, we can get it from a 'id_token' or a separate /userinfo call.
+    user_email = token_res.get('email') or "unknown@company.com" 
+
+    # 3. Final Authorization Check (AD Group)
+    if check_ad_group(user_email):
+        session['user_email'] = user_email
+        return redirect(url_for('index'))
+    else:
+        return "Access Denied: Not in AD Group.", 403
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return "Logged out."
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
-
 
     
 <!DOCTYPE html>
@@ -68,12 +109,13 @@ if __name__ == '__main__':
 </head>
 <body id="mainBody" style="display:none;">
 
-    <nav class="navbar navbar-dark bg-dark px-3 shadow">
-        <span class="navbar-brand">Monitor Dashboard</span>
-        <div class="ms-auto text-white">
-            <small>User:</small> <strong id="userDisplay"></strong>
-        </div>
-    </nav>
+    <nav class="navbar navbar-dark bg-dark px-3 mb-4 shadow">
+    <span class="navbar-brand fw-bold">Process Monitor</span>
+    <div class="ms-auto d-flex align-items-center">
+        <span class="text-white-50 me-3 small">Logged in: <strong>{{ user }}</strong></span>
+        <a href="/logout" class="btn btn-sm btn-outline-danger">Logout</a>
+    </div>
+</nav>
 
     <div class="container mt-4">
         </div>
