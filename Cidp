@@ -1,0 +1,125 @@
+{
+  "hub_port": 8080,
+  "cidp_settings": {
+    "client_id": "YOUR_SPA_CLIENT_ID",
+    "auth_url": "https://cidp.yourcompany.com/adfs/oauth2/authorize",
+    "token_url": "https://cidp.yourcompany.com/adfs/oauth2/token",
+    "redirect_uri": "http://your-hub-url:8080/callback"
+  },
+  "ad_groups": ["GG_App_Admins", "GG_App_Users"],
+  "servers": ["xyzd4.abc.com", "xyzd5.abc.com"]
+}
+
+import json
+import subprocess
+import sys
+from flask import Flask, render_template, request, jsonify
+
+app = Flask(__name__)
+
+def load_config():
+    with open('config.json', 'r') as f:
+        return json.load(f)
+
+def check_ad_access_by_email(email):
+    config = load_config()
+    groups_str = "'" + "','".join(config['ad_groups']) + "'"
+    
+    ps_cmd = f"""
+    $user = Get-ADUser -Filter "EmailAddress -eq '{email}'" -Properties memberOf
+    if ($user) {{
+        foreach ($g in @({groups_str})) {{
+            if ($user.memberOf -like "*$g*") {{ return "Authorized" }}
+        }}
+    }}
+    return "Denied"
+    """
+    try:
+        res = subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, text=True)
+        return "Authorized" in res.stdout
+    except:
+        return False
+
+@app.route('/')
+def index():
+    return render_template('index.html', config=load_config())
+
+@app.route('/verify-token', methods=['POST'])
+def verify_token():
+    # In a production SPA, you would validate the JWT token signature here.
+    # For now, we extract the email passed from the authenticated SPA.
+    data = request.json
+    email = data.get('email')
+    
+    if email and check_ad_access_by_email(email):
+        return jsonify({"success": True, "user": email})
+    return jsonify({"success": False, "message": "AD Authorization Failed"}), 403
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+
+
+    
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Process Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body id="mainBody" style="display:none;">
+
+    <nav class="navbar navbar-dark bg-dark px-3 shadow">
+        <span class="navbar-brand">Monitor Dashboard</span>
+        <div class="ms-auto text-white">
+            <small>User:</small> <strong id="userDisplay"></strong>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        </div>
+
+    <script>
+        const config = {{ config | tojson }};
+
+        async function initAuth() {
+            // 1. Check if we have a token in URL (callback) or local storage
+            // In a real SPA, you would use a library like MSAL.js or oidc-client
+            // Here is the logic flow:
+            
+            let userEmail = sessionStorage.getItem("user_email");
+
+            if (!userEmail) {
+                // Trigger CIDP Login Redirect if no session exists
+                const cidpUrl = `${config.cidp_settings.auth_url}?client_id=${config.cidp_settings.client_id}&response_type=id_token&redirect_uri=${encodeURIComponent(config.cidp_settings.redirect_uri)}&scope=openid email`;
+                
+                // For simplicity in this environment, we assume the user is redirected back with identity
+                // If you are already logged into Windows, CIDP often passes this automatically via NTLM/Kerberos
+                
+                // MOCK: In your real environment, the CIDP will return a 'token'
+                // For this example, let's assume your CIDP provides the identity:
+                window.location.href = cidpUrl; 
+                return;
+            }
+
+            // 2. Once CIDP returns the email, verify with our Hub
+            const response = await fetch('/verify-token', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ email: userEmail })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                document.getElementById('userDisplay').innerText = result.user;
+                document.getElementById('mainBody').style.display = 'block';
+            } else {
+                document.body.innerHTML = `<h2 class="text-danger p-5">${result.message}</h2>`;
+                document.body.style.display = 'block';
+            }
+        }
+
+        window.onload = initAuth;
+    </script>
+</body>
+</html>
+
